@@ -325,8 +325,9 @@ class RoomManager {
     const passIds = Array.isArray(passedCards) ? passedCards : [];
 
     if (room.rules.tenDiscard !== false && playedCards.some(c => c.num === 10)) {
-      if (discardIds.length !== 1) {
-        return { success: false, message: '10捨てでは、捨てるカードを1枚選んでください。' };
+      const discardRequired = playedCards.filter(c => c.num === 10).length;
+      if (discardIds.length !== discardRequired) {
+        return { success: false, message: `10捨てでは、捨てるカードを${discardRequired}枚選んでください。` };
       }
 
       const validDiscard = discardIds.every(id =>

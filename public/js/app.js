@@ -320,16 +320,43 @@ socket.on('room-joined', (data) => {
   updateWaitingRoom(data.room);
 });
 
+function resetToLobbyView() {
+  const lobbyContainer = document.getElementById('lobby-container');
+  const waitingArea = document.getElementById('waiting-area');
+  const lobbyFormArea = document.getElementById('lobby-form-area');
+  const gameContainer = document.getElementById('game-container');
+  const gameFinishedModal = document.getElementById('game-finished-modal');
+  const rulesModal = document.getElementById('rules-modal');
+
+  if (lobbyContainer) lobbyContainer.style.display = 'block';
+  if (waitingArea) waitingArea.style.display = 'none';
+  if (lobbyFormArea) lobbyFormArea.style.display = 'flex';
+  if (gameContainer) gameContainer.style.display = 'none';
+  if (gameFinishedModal) gameFinishedModal.style.display = 'none';
+  if (rulesModal) rulesModal.style.display = 'none';
+
+  document.body.style.overflow = 'auto';
+  if (gameContainer) {
+    gameContainer.style.transform = 'none';
+    gameContainer.style.width = '';
+    gameContainer.style.margin = '';
+    gameContainer.style.transformOrigin = '';
+  }
+
+  clearSelectionState();
+  pendingExchangeSelection = null;
+  latestGameState = null;
+  currentHand = [];
+  selectedCardIds.clear();
+}
+
 socket.on('room-closed', ({ roomId }) => {
   clearRecoveryState();
 
   if (myRoomId === roomId) {
     myRoomId = '';
     isHost = false;
-    document.getElementById('game-container').style.display = 'none';
-    document.getElementById('lobby-container').style.display = 'block';
-    document.getElementById('waiting-area').style.display = 'none';
-    document.getElementById('lobby-form-area').style.display = 'flex';
+    resetToLobbyView();
   }
 
   showError('ホストがルームを閉じました。');

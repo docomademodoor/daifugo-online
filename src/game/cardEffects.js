@@ -76,17 +76,17 @@ function applyCardEffects(room, currentPlayer, playedCards, validation) {
     actionLogs.push(`【5飛び！】${playedCards.length}人スキップ！`);
   }
 
-  // 6. 10捨て (10を出したら手札から不要なカードを1枚破棄)
+  // 6. 10捨て (10を出した枚数分だけ、手札から不要なカードを破棄)
   if (room.rules.tenDiscard && playedCards.some(c => c.num === 10)) {
-    if (currentPlayer.hand.length > 0) {
-      // 自動的に最弱カードを破棄
+    const discardCount = playedCards.filter(c => c.num === 10).length;
+    for (let i = 0; i < discardCount && currentPlayer.hand.length > 0; i++) {
       const discarded = currentPlayer.hand.shift();
       actionLogs.push(`【10捨て！】手札から ${discarded.suit}${discarded.num} を捨てました！`);
-      if (currentPlayer.hand.length === 0) {
-        currentPlayer.isWinner = true;
-        room.winners.push(currentPlayer);
-        currentPlayer.rank = room.winners.length;
-      }
+    }
+    if (currentPlayer.hand.length === 0) {
+      currentPlayer.isWinner = true;
+      room.winners.push(currentPlayer);
+      currentPlayer.rank = room.winners.length;
     }
   }
 
