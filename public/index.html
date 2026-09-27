@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>オンライン大富豪</title>
+  <link rel="stylesheet" href="/css/style.css?v=2.2">
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+
+  <!-- ロビー画面（入室前・待機中） -->
+  <div id="lobby-container" class="container">
+    <h1>♠♥ 大富豪オンライン ♦♣</h1>
+
+    <!-- エラーメッセージ表示（ロビー用） -->
+    <div id="lobby-error" class="error-banner" style="display:none;"></div>
+
+    <!-- モード選択・入室フォーム -->
+    <div id="lobby-form-area">
+      <div class="tabs">
+        <button id="tab-create" class="tab-btn active" onclick="switchTab('create')">ルームを作成</button>
+        <button id="tab-join" class="tab-btn" onclick="switchTab('join')">ルームに参加</button>
+      </div>
+
+      <!-- ルーム作成フォーム -->
+      <div id="form-create" class="form-panel">
+        <div class="input-group">
+          <label for="create-player-name">あなたの名前</label>
+          <input type="text" id="create-player-name" placeholder="例: プレイヤー1" value="プレイヤー1">
+        </div>
+        <div class="input-group">
+          <label for="create-room-id">合言葉（ルームID）</label>
+          <input type="text" id="create-room-id" placeholder="例: daifugo-room" value="test">
+        </div>
+
+        <div class="rules-section">
+          <h3>採用するルール設定</h3>
+          <p class="rules-always-on">常時適用: 革命 / マーク縛り / スペ3返し / 禁止上がり / 都落ち / ♢3スタート / ジョーカー</p>
+          <div class="rules-grid">
+            <label class="rule-checkbox">
+              <input type="checkbox" id="rule-staircase" checked>
+              <span><strong>階段</strong><small>連番の並びを出せる</small></span>
+            </label>
+            <label class="rule-checkbox">
+              <input type="checkbox" id="rule-staircaseRevolution" checked>
+              <span><strong>階段革命</strong><small>革命時に階段を強く扱う</small></span>
+            </label>
+            <label class="rule-checkbox">
+              <input type="checkbox" id="rule-elevenBack" checked>
+              <span><strong>Jバック</strong><small>Jが出ている間、強さ一時反転</small></span>
+            </label>
+            <label class="rule-checkbox">
+              <input type="checkbox" id="rule-numberLock" checked>
+              <span><strong>連番縛り</strong><small>連続した数字の並びを優先する</small></span>
+            </label>
+            <label class="rule-checkbox">
+              <input type="checkbox" id="rule-fiveSkip" checked>
+              <span><strong>5飛び</strong><small>5が出たら次の人をスキップ</small></span>
+            </label>
+            <label class="rule-checkbox">
+              <input type="checkbox" id="rule-sevenPass" checked>
+              <span><strong>7渡し</strong><small>7を出したら枚数分を次の人へ渡す</small></span>
+            </label>
+            <label class="rule-checkbox">
+              <input type="checkbox" id="rule-tenDiscard" checked>
+              <span><strong>10捨て</strong><small>10が出たら手札を1枚破棄</small></span>
+            </label>
+          </div>
+        </div>
+
+        <button class="primary-btn" onclick="createRoom()">ルームを作成して待機</button>
+      </div>
+
+      <!-- ルーム参加フォーム -->
+      <div id="form-join" class="form-panel" style="display:none;">
+        <div class="input-group">
+          <label for="join-player-name">あなたの名前</label>
+          <input type="text" id="join-player-name" placeholder="例: プレイヤー2" value="プレイヤー2">
+        </div>
+        <div class="input-group">
+          <label for="join-room-id">合言葉（ルームID）</label>
+          <input type="text" id="join-room-id" placeholder="合言葉を入力" value="test">
+        </div>
+        <button class="primary-btn" onclick="joinRoom()">ルームに参加する</button>
+      </div>
+    </div>
+
+    <!-- 入室後待機エリア -->
+    <div id="waiting-area" style="display:none;">
+      <div class="room-info-card">
+        <h2>合言葉: <span id="display-room-id" class="highlight-text"></span></h2>
+        <div id="display-rules" class="rule-badges"></div>
+      </div>
+
+      <div class="players-card">
+        <h3>参加プレイヤー (<span id="player-count">0</span>/8人)</h3>
+        <div id="players-list" class="players-list"></div>
+      </div>
+
+      <div id="host-controls" style="display:none; margin-top: 20px;">
+        <p id="host-start-hint" class="hint-text">2人以上揃うとゲームを開始できます</p>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <button id="start-btn" class="primary-btn" onclick="startGame()" disabled>ゲーム開始</button>
+          <button id="close-room-btn" class="secondary-btn" onclick="closeCurrentRoom()">ルームを閉じる</button>
+        </div>
+      </div>
+      <div id="guest-waiting-msg" style="display:none; margin-top: 20px;" class="hint-text">
+        ホストがゲームを開始するのを待っています...
+      </div>
+    </div>
+  </div>
+
+  <!-- ゲーム画面 -->
+  <div id="game-container" class="container" style="display:none;">
+    <!-- ゲームヘッダー -->
+    <div class="game-header">
+      <div class="game-room-tag">合言葉: <span id="game-room-id"></span></div>
+      <div class="game-header-actions">
+        <div id="game-rules-badges" class="rule-badges"></div>
+        <button id="rules-toggle-btn" class="secondary-btn rules-toggle-btn" type="button" onclick="toggleRulesModal()">ルール</button>
+      </div>
+    </div>
+
+    <!-- ページ上部エラー表示バナー（アラートの代わり） -->
+    <div id="game-error" class="error-banner" style="display:none;"></div>
+
+    <!-- 状況通知バナー（革命、11バック、縛りなど） -->
+    <div id="game-status-banner" class="status-banner" style="display:none;"></div>
+
+    <div class="table-stage">
+      <!-- 場 -->
+      <div class="field-section">
+        <div class="field-title">場</div>
+        <div id="field" class="field-cards"></div>
+        <div id="suit-lock-indicator" class="lock-indicator" style="display:none;"></div>
+      </div>
+
+      <!-- 他プレイヤー状態 -->
+      <div class="others-section">
+        <div id="other-players" class="other-players-grid"></div>
+      </div>
+    </div>
+
+    <!-- ターン情報 & 操作ボタン -->
+    <div class="turn-control-section">
+      <div class="turn-status-box">
+        <h3 id="turn-info" class="turn-text"></h3>
+      </div>
+      <div class="control-actions">
+        <button id="play-btn" class="play-btn" onclick="submitPlayCards()">出す (0枚)</button>
+        <button id="pass-btn" class="pass-btn" onclick="passTurn()">パスする</button>
+      </div>
+    </div>
+
+    <!-- 自分の手札 -->
+    <div class="hand-section">
+      <div class="hand-header">
+        <h3>あなたの手札 <small>（クリックで選択 / 複数枚出し対応）</small></h3>
+      </div>
+      <div id="hand" class="hand-cards"></div>
+    </div>
+
+      <!-- ルールポップアップ -->
+    <div id="rules-modal" class="modal rules-modal" style="display:none;">
+      <div class="modal-content rules-modal-content">
+        <div class="rules-modal-header">
+          <h2>ルール一覧</h2>
+          <button type="button" class="secondary-btn" onclick="toggleRulesModal(false)">閉じる</button>
+        </div>
+        <div id="rules-modal-body" class="rules-modal-body"></div>
+      </div>
+    </div>
+
+    <!-- ゲーム終了ダイアログ -->
+    <div id="game-finished-modal" class="modal" style="display:none;">
+      <div class="modal-content">
+        <h2>🎉 ゲーム終了・階級確定 🎉</h2>
+        <div id="ranking-list" class="ranking-list"></div>
+        <div id="modal-next-controls" style="margin-top: 20px;">
+          <button id="next-game-btn" class="primary-btn" onclick="nextRound()" style="display:none;">次のゲームを開始（カード交換あり）</button>
+          <div id="guest-next-hint" class="hint-text" style="display:none;">ホストが次のゲームを開始するのを待っています...</div>
+          <button class="secondary-btn" onclick="location.reload()" style="margin-top: 10px;">ロビーに戻る</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/app.js?v=2.2"></script>
+</body>
+</html>
