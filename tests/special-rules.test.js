@@ -41,6 +41,41 @@ describe('特殊効果テスト', () => {
     expect(room.actionMessage).toContain('7渡し');
   });
 
+  it('8×3 + JOKER でも革命が発生する', () => {
+    const room = {
+      rules: {
+        eightCut: true,
+        revolution: true,
+        staircaseRevolution: false,
+        suitLock: false,
+        numberLock: false,
+        elevenBack: false,
+        fiveSkip: false,
+        tenDiscard: false,
+        sevenPass: false
+      },
+      fieldCards: [],
+      isRevolution: false,
+      isElevenBack: false,
+      lockedSuit: null,
+      lockedNumber: null,
+      winners: []
+    };
+
+    const currentPlayer = { name: 'A', hand: [] };
+    const playedCards = [
+      { id: 'h8', suit: '♥', num: 8, strength: 8 },
+      { id: 'd8', suit: '♦', num: 8, strength: 8 },
+      { id: 's8', suit: '♠', num: 8, strength: 8 },
+      { id: 'JOKER', suit: 'JOKER', num: null, strength: 15 }
+    ];
+
+    const result = applyCardEffects(room, currentPlayer, playedCards, { valid: true });
+
+    expect(room.isRevolution).toBe(true);
+    expect(result.actionLogs.join(' ')).toContain('革命');
+  });
+
   it('10捨てで指定枚数だけ捨てられる', () => {
     const room = {
       rules: {

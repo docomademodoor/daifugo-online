@@ -22,14 +22,8 @@ function applyCardEffects(room, currentPlayer, playedCards, validation) {
     return { clearField, skipCount, actionLogs };
   }
 
-  // 2. 8切り (8を含むカードで場を流す)
-  if (room.rules.eightCut && playedCards.some(c => c.num === 8)) {
-    clearField = true;
-    actionLogs.push(`【8切り！】${currentPlayer.name} が場を流しました！`);
-    return { clearField, skipCount, actionLogs };
-  }
-
-  // 3. 革命判定 (4枚以上の同時出し)
+  // 2. 革命判定 (4枚以上の同時出し)
+  // 8切りより先に反転を処理することで、8×3 + JOKER のようなケースでも革命が発生する。
   if (room.rules.revolution && playedCards.length >= 4) {
     room.isRevolution = !room.isRevolution;
     actionLogs.push(
@@ -37,6 +31,13 @@ function applyCardEffects(room, currentPlayer, playedCards, validation) {
         ? '【革命発動！】カードの強さが反転しました！（3が最強）'
         : '【革命返し！】通常の強さに戻りました！'
     );
+  }
+
+  // 3. 8切り (8を含むカードで場を流す)
+  if (room.rules.eightCut && playedCards.some(c => c.num === 8)) {
+    clearField = true;
+    actionLogs.push(`【8切り！】${currentPlayer.name} が場を流しました！`);
+    return { clearField, skipCount, actionLogs };
   }
 
   // 3-2. 階段革命判定 (一般的なローカルルール: 同スートの連番4枚以上で革命)
