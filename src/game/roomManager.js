@@ -2,6 +2,14 @@ const { createDeck } = require('../utils/deck');
 const { isValidPlay, checkForbiddenFinish } = require('./rules');
 const { applyCardEffects, checkMiyakoOchi } = require('./cardEffects');
 
+const ROLE_POINTS = {
+  '大富豪': 2,
+  '富豪': 1,
+  '平民': 0,
+  '貧民': -1,
+  '大貧民': -2
+};
+
 class RoomManager {
   constructor() {
     this.rooms = {};
@@ -46,7 +54,9 @@ class RoomManager {
           isWinner: false,
           rank: null,
           role: null,
-          connected: true
+          connected: true,
+          isCpu: false,
+          totalPoints: 0
         }
       ],
       fieldCards: [],
@@ -60,7 +70,12 @@ class RoomManager {
       lockedNumber: null,
       actionMessage: 'ルームが作成されました',
       winners: [],
-      previousRoles: null
+      previousRoles: null,
+      isLocked: false,
+      nextCpuNumber: 1,
+      completedRounds: 0,
+      firstTurnExemptPlayerId: null,
+      turnDeadlineAt: null
     };
 
     this.rooms[trimmedId] = newRoom;
@@ -82,10 +97,6 @@ class RoomManager {
       return { success: false, message: 'このゲームは現在プレイ中です' };
     }
 
-    if (room.players.length >= 8) {
-      return { success: false, message: '部屋が満員です（最大8人まで参加可能）' };
-    }
-
     const existingPlayer = room.players.find(p => p.playerId === (playerId || socket.id));
     if (existingPlayer) {
       const previousSocketId = existingPlayer.id;
@@ -98,6 +109,26 @@ class RoomManager {
       return { success: true, room, playerId: existingPlayer.playerId };
     }
 
+    if (room.isLocked) {
+      return { success: false, message: 'このルームはロックされています' };
+    }
+
+    this.resetSeriesForRosterChange(room);
+
+    if (room.players.length >= 8) {
+      let cpuIndex = -1;
+      for (let index = room.players.length - 1; index >= 0; index--) {
+        if (room.players[index].isCpu) {
+          cpuIndex = index;
+          break;
+        }
+      }
+      if (cpuIndex === -1) {
+        return { success: false, message: '部屋が満員です（最大8人まで参加可能）' };
+      }
+      room.players.splice(cpuIndex, 1);
+    }
+
     const newPlayer = {
       id: socket.id,
       playerId: playerId || socket.id,
@@ -106,11 +137,88 @@ class RoomManager {
       isWinner: false,
       rank: null,
       role: null,
-      connected: true
+      connected: true,
+      isCpu: false,
+      totalPoints: 0
     };
     room.players.push(newPlayer);
 
     return { success: true, room, playerId: newPlayer.playerId };
+  }
+
+  addCpuPlayer(socketId, roomId, difficulty = 'normal') {
+    const room = this.rooms[roomId];
+    if (!room) return { success: false, message: 'ルームが存在しません' };
+    if (room.hostId !== socketId) return { success: false, message: 'ホストのみCPUを追加できます' };
+    if (room.status !== 'waiting' && room.status !== 'finished') {
+      return { success: false, message: 'ゲーム中はCPUを変更できません' };
+    }
+    if (room.players.length >= 8) return { success: false, message: '参加人数は最大8人です' };
+
+    this.resetSeriesForRosterChange(room);
+
+    const cpuNumber = room.nextCpuNumber++;
+    const cpuId = `cpu-${room.id}-${cpuNumber}`;
+    const cpuDifficulty = ['easy', 'normal', 'hard'].includes(difficulty) ? difficulty : 'normal';
+    room.players.push({
+      id: cpuId,
+      playerId: cpuId,
+      name: `CPU ${cpuNumber}`,
+      hand: [],
+      isWinner: false,
+      rank: null,
+      role: null,
+      connected: true,
+      isCpu: true,
+      difficulty: cpuDifficulty,
+      totalPoints: 0
+    });
+    room.actionMessage = `CPU ${cpuNumber}が参加しました`;
+    return { success: true, room };
+  }
+
+  removeCpuPlayer(socketId, roomId) {
+    const room = this.rooms[roomId];
+    if (!room) return { success: false, message: 'ルームが存在しません' };
+    if (room.hostId !== socketId) return { success: false, message: 'ホストのみCPUを削除できます' };
+    if (room.status !== 'waiting' && room.status !== 'finished') {
+      return { success: false, message: 'ゲーム中はCPUを変更できません' };
+    }
+
+    const cpuIndex = room.players.findLastIndex(player => player.isCpu);
+    if (cpuIndex === -1) return { success: false, message: '削除できるCPUがいません' };
+
+    this.resetSeriesForRosterChange(room);
+    const [removedCpu] = room.players.splice(cpuIndex, 1);
+    room.actionMessage = `${removedCpu.name}が退出しました`;
+    return { success: true, room };
+  }
+
+  resetSeriesForRosterChange(room) {
+    if (!room.completedRounds) return;
+
+    room.completedRounds = 0;
+    room.previousRoles = null;
+    room.winners = [];
+    room.players.forEach(player => {
+      player.totalPoints = 0;
+      player.rank = null;
+      player.role = null;
+      player.previousRole = null;
+    });
+  }
+
+  setRoomLock(socketId, roomId, isLocked) {
+    const room = this.rooms[roomId];
+    if (!room) return { success: false, message: 'ルームが存在しません' };
+    if (room.hostId !== socketId) return { success: false, message: 'ホストのみロックを変更できます' };
+    if (room.status !== 'waiting' && room.status !== 'finished') {
+      return { success: false, message: 'ゲーム中はロックを変更できません' };
+    }
+
+    room.isLocked = !!isLocked;
+    room.actionMessage = room.isLocked ? 'ルームをロックしました' : 'ルームのロックを解除しました';
+    return { success: true, room };
   }
 
   startGame(socketId, roomId) {
@@ -135,6 +243,8 @@ class RoomManager {
     room.winners = [];
     room.exchangeRequirements = {};
     room.exchangeSelections = {};
+    room.turnDeadlineAt = null;
+    room.firstTurnExemptPlayerId = null;
 
     const deck = createDeck(room.rules.includeJoker);
     room.players.forEach(p => {
@@ -159,6 +269,7 @@ class RoomManager {
     const exchangePlan = this.buildExchangePlan(room);
     if (exchangePlan.length > 0) {
       room.status = 'waiting-exchange';
+      room.firstTurnExemptPlayerId = room.players[room.turnIndex]?.id || null;
       room.exchangeRequirements = exchangePlan.reduce((acc, pair) => {
         acc[pair.fromId] = pair.count;
         return acc;
@@ -185,6 +296,8 @@ class RoomManager {
         room.actionMessage = `大貧民の ${room.players[daihinminIndex].name} からスタートです！`;
       }
     }
+
+    room.firstTurnExemptPlayerId = room.players[room.turnIndex]?.id || null;
 
     return { success: true, room };
   }
@@ -315,6 +428,23 @@ class RoomManager {
     if (playedCards.length === 0) {
       return { success: false, message: '出すカードを選択してください' };
     }
+    const hasAllCards = playedCards.every(c =>
+      currentPlayer.hand.some(h => h.id === c.id)
+    );
+    if (!hasAllCards) {
+      return { success: false, message: '指定されたカードを所持していません' };
+    }
+
+    const playedIds = new Set(playedCards.map(c => c.id));
+    const sideSelectionCards = currentPlayer.hand.filter(card => !playedIds.has(card.id));
+    const hasSevenPass = room.rules.sevenPass !== false && playedCards.some(c => c.num === 7);
+    const hasTenDiscard = room.rules.tenDiscard !== false && playedCards.some(c => c.num === 10);
+    const passRequired = hasSevenPass
+      ? Math.min(playedCards.filter(c => c.num === 7).length, sideSelectionCards.length)
+      : 0;
+    const discardRequired = hasTenDiscard
+      ? Math.min(playedCards.filter(c => c.num === 10).length, sideSelectionCards.length - passRequired)
+      : 0;
 
     const hasDiamondThree = currentPlayer.hand.some(c => c.id === '♦3');
     if (hasDiamondThree && !playedCards.some(c => c.id === '♦3')) {
@@ -324,8 +454,7 @@ class RoomManager {
     const discardIds = Array.isArray(discardCards) ? discardCards : [];
     const passIds = Array.isArray(passedCards) ? passedCards : [];
 
-    if (room.rules.tenDiscard !== false && playedCards.some(c => c.num === 10)) {
-      const discardRequired = playedCards.filter(c => c.num === 10).length;
+    if (hasTenDiscard) {
       if (discardIds.length !== discardRequired) {
         return { success: false, message: `10捨てでは、捨てるカードを${discardRequired}枚選んでください。` };
       }
@@ -338,10 +467,9 @@ class RoomManager {
       }
     }
 
-    if (room.rules.sevenPass !== false && playedCards.some(c => c.num === 7)) {
-      const passCount = playedCards.filter(c => c.num === 7).length;
-      if (passCount !== passIds.length) {
-        return { success: false, message: `7渡しでは、7の枚数分（${passCount}枚）を次の順番の人に渡してください。` };
+    if (hasSevenPass) {
+      if (passRequired !== passIds.length) {
+        return { success: false, message: `7渡しでは、渡すカードを${passRequired}枚選んでください。` };
       }
 
       const validPass = passIds.every(id =>
@@ -352,11 +480,8 @@ class RoomManager {
       }
     }
 
-    const hasAllCards = playedCards.every(c =>
-      currentPlayer.hand.some(h => h.id === c.id)
-    );
-    if (!hasAllCards) {
-      return { success: false, message: '指定されたカードを所持していません' };
+    if (passIds.some(id => discardIds.includes(id))) {
+      return { success: false, message: '渡すカードと捨てるカードは別々に選んでください。' };
     }
 
     const validation = isValidPlay(playedCards, room.fieldCards, room.rules, {
@@ -369,6 +494,8 @@ class RoomManager {
     if (!validation.valid) {
       return { success: false, message: validation.message };
     }
+
+    room.firstTurnExemptPlayerId = null;
 
     const finishCheck = checkForbiddenFinish(
       playedCards,
@@ -384,7 +511,7 @@ class RoomManager {
     if (finishCheck.isForbidden) {
       currentPlayer.hand = [];
       currentPlayer.isWinner = false;
-      currentPlayer.rank = room.players.length;
+      currentPlayer.rank = this.getLastAvailableRank(room);
       currentPlayer.role = '大貧民';
 
       room.fieldCards = [];
@@ -399,7 +526,6 @@ class RoomManager {
       return { success: true, room, updatedHand: [] };
     }
 
-    const playedIds = new Set(playedCards.map(c => c.id));
     const discardSet = new Set(discardIds);
     const passSet = new Set(passIds);
     const passedCardsList = currentPlayer.hand.filter(c => passSet.has(c.id));
@@ -411,8 +537,10 @@ class RoomManager {
 
     if (currentPlayer.hand.length === 0) {
       currentPlayer.isWinner = true;
-      room.winners.push(currentPlayer);
-      currentPlayer.rank = room.winners.length;
+      currentPlayer.rank = this.getNextAvailableRank(room);
+      if (!room.winners.some(winner => winner.id === currentPlayer.id)) {
+        room.winners.push(currentPlayer);
+      }
 
       const miyakoMsg = checkMiyakoOchi(room, currentPlayer);
       if (miyakoMsg) {
@@ -420,12 +548,9 @@ class RoomManager {
       }
     }
 
-    const effects = applyCardEffects(room, currentPlayer, playedCards, validation);
-
-    if (room.rules.tenDiscard !== false && playedCards.some(c => c.num === 10) && discardedCardsList.length > 0) {
-      const discardedCard = discardedCardsList[0];
-      effects.actionLogs.push(`【10捨て！】${currentPlayer.name} は ${discardedCard.suit}${discardedCard.num} を捨てました。`);
-    }
+    const effects = applyCardEffects(room, currentPlayer, playedCards, validation, {
+      discardedCards: discardedCardsList
+    });
 
     if (room.rules.sevenPass !== false && playedCards.some(c => c.num === 7) && passedCardsList.length > 0) {
       const nextIndex = this.getNextTurnIndex(room, room.turnIndex);
@@ -467,8 +592,13 @@ class RoomManager {
       return { success: false, message: 'あなたのターンではありません！' };
     }
 
+    room.firstTurnExemptPlayerId = null;
+
     if (room.fieldCards.length === 0) {
-      return { success: false, message: '誰もカードを出していない状態ではパスできません！' };
+      room.passCount = 0;
+      room.turnIndex = this.getNextTurnIndex(room, room.turnIndex);
+      room.actionMessage = `${currentPlayer.name} がパスしました。`;
+      return { success: true, room };
     }
 
     const activePlayers = room.players.filter(p => p.hand.length > 0);
@@ -496,7 +626,24 @@ class RoomManager {
     return { success: true, room };
   }
 
+  getNextAvailableRank(room) {
+    const usedRanks = new Set(room.players.map(player => player.rank).filter(Number.isInteger));
+    for (let rank = 1; rank <= room.players.length; rank++) {
+      if (!usedRanks.has(rank)) return rank;
+    }
+    return room.players.length;
+  }
+
+  getLastAvailableRank(room) {
+    const usedRanks = new Set(room.players.map(player => player.rank).filter(Number.isInteger));
+    for (let rank = room.players.length; rank >= 1; rank--) {
+      if (!usedRanks.has(rank)) return rank;
+    }
+    return room.players.length;
+  }
+
   checkGameCompletion(room) {
+    if (room.status === 'finished') return;
     const activePlayers = room.players.filter(p => p.hand.length > 0);
 
     if (activePlayers.length <= 1) {
@@ -504,11 +651,19 @@ class RoomManager {
 
       if (activePlayers.length === 1) {
         const lastPlayer = activePlayers[0];
-        lastPlayer.rank = room.players.length;
-        room.winners.push(lastPlayer);
+        if (!Number.isInteger(lastPlayer.rank)) {
+          lastPlayer.rank = this.getNextAvailableRank(room);
+        }
+        if (!room.winners.some(winner => winner.id === lastPlayer.id)) {
+          room.winners.push(lastPlayer);
+        }
       }
 
       this.assignRoles(room);
+      room.completedRounds = (room.completedRounds || 0) + 1;
+      room.players.forEach(player => {
+        player.totalPoints = (player.totalPoints || 0) + (ROLE_POINTS[player.role] ?? 0);
+      });
       room.actionMessage = 'ゲーム終了！順位と階級が決定しました！';
     }
   }
@@ -517,19 +672,13 @@ class RoomManager {
     const sorted = [...room.players].sort((a, b) => (a.rank || 99) - (b.rank || 99));
     const count = sorted.length;
 
-    if (count === 4) {
-      sorted[0].role = '大富豪';
-      sorted[1].role = '富豪';
-      sorted[2].role = '貧民';
-      sorted[3].role = '大貧民';
-    } else if (count === 3) {
-      sorted[0].role = '大富豪';
-      sorted[1].role = '平民';
-      sorted[2].role = '大貧民';
-    } else if (count === 2) {
-      sorted[0].role = '大富豪';
-      sorted[1].role = '大貧民';
-    }
+    sorted.forEach(player => {
+      if (player.rank === 1) player.role = '大富豪';
+      else if (player.rank === count) player.role = '大貧民';
+      else if (count >= 4 && player.rank === 2) player.role = '富豪';
+      else if (count >= 4 && player.rank === count - 1) player.role = '貧民';
+      else player.role = '平民';
+    });
 
     room.previousRoles = {};
     sorted.forEach(p => {
@@ -546,15 +695,21 @@ class RoomManager {
       fieldCards: room.fieldCards,
       turnPlayerId: room.players[room.turnIndex]?.id,
       turnPlayerName: room.players[room.turnIndex]?.name,
+      turnDeadlineAt: room.turnDeadlineAt || null,
       players: room.players.map(p => ({
         id: p.id,
         name: p.name,
+        isCpu: !!p.isCpu,
+        difficulty: p.difficulty || null,
         cardCount: p.hand.length,
+        totalPoints: p.totalPoints || 0,
         isWinner: p.isWinner || false,
         rank: p.rank || null,
         role: p.role || null
       })),
       rules: room.rules,
+      isLocked: !!room.isLocked,
+      completedRounds: room.completedRounds || 0,
       exchangeRequirements: room.exchangeRequirements || {},
       isRevolution: room.isRevolution,
       isElevenBack: room.isElevenBack,

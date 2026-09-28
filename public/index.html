@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>オンライン大富豪</title>
-  <link rel="stylesheet" href="/css/style.css?v=2.2">
+  <link rel="stylesheet" href="/css/style.css?v=3.3">
   <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
@@ -98,7 +98,7 @@
       </div>
 
       <div class="players-card">
-        <h3>参加プレイヤー (<span id="player-count">0</span>/8人)</h3>
+        <h3>参加プレイヤー (<span id="player-count">0</span>/8人、CPU <span id="cpu-count">0</span>人)</h3>
         <div id="players-list" class="players-list"></div>
       </div>
 
@@ -106,8 +106,20 @@
         <p id="host-start-hint" class="hint-text">2人以上揃うとゲームを開始できます</p>
         <div style="display:flex; gap:10px; flex-wrap:wrap;">
           <button id="start-btn" class="primary-btn" onclick="startGame()" disabled>ゲーム開始</button>
+          <label class="cpu-difficulty-control" for="cpu-difficulty-select">
+            <span>CPUレベル</span>
+            <select id="cpu-difficulty-select" class="cpu-difficulty-select">
+              <option value="easy">かんたん</option>
+              <option value="normal" selected>ふつう</option>
+              <option value="hard">強い</option>
+            </select>
+          </label>
+          <button id="add-cpu-btn" class="secondary-btn" type="button" onclick="addCpuPlayer()">CPUを追加</button>
+          <button id="remove-cpu-btn" class="secondary-btn" type="button" onclick="removeCpuPlayer()" disabled>CPUを削除</button>
+          <button id="room-lock-btn" class="secondary-btn" type="button" onclick="toggleRoomLock()">ルームをロック</button>
           <button id="close-room-btn" class="secondary-btn" onclick="closeCurrentRoom()">ルームを閉じる</button>
         </div>
+        <p id="room-lock-status" class="hint-text" style="display:none;"></p>
       </div>
       <div id="guest-waiting-msg" style="display:none; margin-top: 20px;" class="hint-text">
         ホストがゲームを開始するのを待っています...
@@ -122,20 +134,25 @@
       <div class="game-room-tag">合言葉: <span id="game-room-id"></span></div>
       <div class="game-header-actions">
         <div id="game-rules-badges" class="rule-badges"></div>
+        <button id="overall-ranking-toggle" class="secondary-btn rules-toggle-btn" type="button" onclick="toggleOverallRanking()">総合順位</button>
         <button id="rules-toggle-btn" class="secondary-btn rules-toggle-btn" type="button" onclick="toggleRulesModal()">ルール</button>
       </div>
     </div>
 
     <!-- ページ上部エラー表示バナー（アラートの代わり） -->
-    <div id="game-error" class="error-banner" style="display:none;"></div>
+    <div id="game-error" class="error-banner" role="alert" aria-live="assertive" style="display:none;"></div>
 
     <!-- 状況通知バナー（革命、11バック、縛りなど） -->
-    <div id="game-status-banner" class="status-banner" style="display:none;"></div>
+    <div id="game-status-banner" class="status-banner" role="status" aria-live="polite" style="display:none;">
+      <div id="game-status-tags" class="game-status-tags"></div>
+      <p id="game-action-message" class="game-action-message"></p>
+    </div>
 
     <div class="table-stage">
       <!-- 場 -->
       <div class="field-section">
         <div class="field-title">場</div>
+        <div id="previous-field-card" class="previous-field-card" aria-hidden="true" style="display:none;"></div>
         <div id="field" class="field-cards"></div>
         <div id="suit-lock-indicator" class="lock-indicator" style="display:none;"></div>
       </div>
@@ -149,7 +166,11 @@
     <!-- ターン情報 & 操作ボタン -->
     <div class="turn-control-section">
       <div class="turn-status-box">
-        <h3 id="turn-info" class="turn-text"></h3>
+        <div class="turn-status-heading">
+          <h3 id="turn-info" class="turn-text"></h3>
+          <span id="turn-timer" class="turn-timer" style="display:none;"></span>
+        </div>
+        <p id="turn-detail" class="turn-detail"></p>
       </div>
       <div class="control-actions">
         <button id="play-btn" class="play-btn" onclick="submitPlayCards()">出す (0枚)</button>
@@ -160,7 +181,7 @@
     <!-- 自分の手札 -->
     <div class="hand-section">
       <div class="hand-header">
-        <h3>あなたの手札 <small>（クリックで選択 / 複数枚出し対応）</small></h3>
+        <h3>手札 <small>カードを選択</small></h3>
       </div>
       <div id="hand" class="hand-cards"></div>
     </div>
@@ -176,20 +197,38 @@
       </div>
     </div>
 
+    <div id="overall-ranking-modal" class="modal overall-ranking-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="live-overall-ranking-heading" onclick="if(event.target===this) toggleOverallRanking(false)">
+      <div class="modal-content overall-ranking-modal-content">
+        <div class="rules-modal-header">
+          <div>
+            <h2 id="live-overall-ranking-heading">総合順位</h2>
+            <p id="live-overall-ranking-rounds" class="overall-ranking-rounds"></p>
+          </div>
+          <button class="secondary-btn" type="button" onclick="toggleOverallRanking(false)">閉じる</button>
+        </div>
+        <div id="live-overall-ranking-list" class="overall-ranking-list"></div>
+      </div>
+    </div>
+
     <!-- ゲーム終了ダイアログ -->
     <div id="game-finished-modal" class="modal" style="display:none;">
-      <div class="modal-content">
-        <h2>🎉 ゲーム終了・階級確定 🎉</h2>
+      <div class="modal-content game-finished-content">
+        <h2>対戦結果</h2>
         <div id="ranking-list" class="ranking-list"></div>
+        <section class="overall-ranking-section" aria-labelledby="overall-ranking-heading">
+          <h3 id="overall-ranking-heading">総合順位</h3>
+          <p id="overall-ranking-rounds" class="overall-ranking-rounds"></p>
+          <div id="overall-ranking-list" class="overall-ranking-list"></div>
+        </section>
         <div id="modal-next-controls" style="margin-top: 20px;">
           <button id="next-game-btn" class="primary-btn" onclick="nextRound()" style="display:none;">次のゲームを開始（カード交換あり）</button>
-          <div id="guest-next-hint" class="hint-text" style="display:none;">ホストが次のゲームを開始するのを待っています...</div>
+          <div id="guest-next-hint" class="hint-text" style="display:none;">ホストが次のゲームを開始するまでお待ちください</div>
           <button class="secondary-btn" onclick="location.reload()" style="margin-top: 10px;">ロビーに戻る</button>
         </div>
       </div>
     </div>
   </div>
 
-  <script src="/js/app.js?v=2.2"></script>
+  <script src="/js/app.js?v=2.22"></script>
 </body>
 </html>

@@ -4,21 +4,26 @@
   padding: 0;
 }
 
+html {
+  min-height: 100%;
+  background: radial-gradient(circle at center, #26592d 0%, #15381a 100%);
+  transition: background 0.25s ease;
+}
+
+html.revolution-mode {
+  background: radial-gradient(circle at center, #a64c9d 0%, #693173 52%, #31194b 100%);
+}
+
 body {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  background: radial-gradient(circle at center, #26592d 0%, #15381a 100%);
+  background: transparent;
   color: white;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   align-items: center;
   padding: 15px;
-  transition: background 0.25s ease, color 0.25s ease;
-}
-
-body.revolution-mode {
-  background: radial-gradient(circle at center, #d9ffe5 0%, #7ae3a0 28%, #2f9f62 100%);
-  color: #0d2d1d;
+  transition: color 0.25s ease;
 }
 
 body.revolution-mode .container,
@@ -33,26 +38,26 @@ body.revolution-mode .field-section,
 body.revolution-mode .other-players-card,
 body.revolution-mode .modal-content,
 body.revolution-mode .rules-modal-item {
-  box-shadow: 0 0 18px rgba(18, 84, 52, 0.22);
+  box-shadow: 0 0 18px rgba(49, 25, 75, 0.3);
 }
 
 body.revolution-mode .container {
   background: rgba(255, 255, 255, 0.28);
-  border: 1px solid rgba(10, 53, 33, 0.22);
+  border: 1px solid rgba(49, 25, 75, 0.3);
 }
 
 body.revolution-mode .status-banner.revolution {
-  background: linear-gradient(135deg, #0a4d2d, #22b573);
-  color: #ecfff5;
-  box-shadow: 0 0 20px rgba(8, 95, 52, 0.45);
+  background: linear-gradient(135deg, #51205f, #a64c9d);
+  color: #fff5ff;
+  box-shadow: 0 0 20px rgba(81, 32, 95, 0.5);
 }
 
 body.revolution-mode .badge,
 body.revolution-mode .player-item,
 body.revolution-mode .rule-checkbox,
 body.revolution-mode .rules-modal-item {
-  background: rgba(10, 53, 33, 0.08);
-  border-color: rgba(9, 58, 36, 0.2);
+  background: rgba(49, 25, 75, 0.12);
+  border-color: rgba(49, 25, 75, 0.24);
 }
 
 .container {
@@ -99,21 +104,55 @@ h2, h3 {
 
 /* 状況ステータスバナー */
 .status-banner {
-  background: #f39c12;
-  color: #2c3e50;
-  padding: 10px 16px;
-  border-radius: 8px;
-  font-weight: bold;
-  text-align: center;
-  margin-bottom: 15px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-  font-size: 15px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  color: #edf5ef;
+  font-size: 14px;
 }
 
-.status-banner.revolution {
-  background: linear-gradient(135deg, #d35400, #f39c12);
-  color: #fff8e1;
-  box-shadow: 0 0 18px rgba(211, 84, 0, 0.45);
+.game-status-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+}
+
+.game-status-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 4px 9px;
+  border: 1px solid rgba(208, 236, 216, 0.2);
+  border-radius: 999px;
+  background: rgba(8, 35, 20, 0.72);
+  color: #d8eadc;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.game-action-message {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid rgba(208, 236, 216, 0.12);
+  border-left: 3px solid #78bd8e;
+  border-radius: 9px;
+  background: rgba(5, 27, 15, 0.58);
+  color: #f1f7f2;
+  font-size: 14px;
+  font-weight: 550;
+  line-height: 1.45;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.status-banner.revolution .game-status-tag.is-revolution {
+  border-color: rgba(231, 174, 224, 0.6);
+  background: rgba(83, 34, 82, 0.82);
+  color: #ffe8fb;
 }
 
 /* タブUI */
@@ -370,6 +409,40 @@ input[type="text"]:focus {
   border-left: 4px solid #2ecc71;
 }
 
+.player-item.is-cpu {
+  border-left: 4px solid #58a6c4;
+}
+
+.cpu-tag {
+  display: inline-block;
+  background: rgba(88, 166, 196, 0.24);
+  color: #b8e7f4;
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-weight: bold;
+  vertical-align: 1px;
+}
+
+.cpu-difficulty-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 40px;
+  color: #dcebe0;
+  font-size: 13px;
+}
+
+.cpu-difficulty-select {
+  min-height: 40px;
+  padding: 7px 30px 7px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 7px;
+  background: #173b22;
+  color: #f4faf5;
+  font: inherit;
+}
+
 .host-tag {
   background: #f39c12;
   color: #2c3e50;
@@ -393,7 +466,7 @@ input[type="text"]:focus {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 15px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+  border-bottom: 1px solid rgba(213, 238, 218, 0.14);
   padding-bottom: 10px;
   gap: 10px;
 }
@@ -428,14 +501,15 @@ input[type="text"]:focus {
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  background: rgba(0, 0, 0, 0.25);
-  border: 2px dashed rgba(255, 255, 255, 0.3);
-  border-radius: 10px;
-  padding: 20px;
+  background: rgba(5, 31, 17, 0.48);
+  border: 1px solid rgba(199, 233, 207, 0.28);
+  border-radius: 14px;
+  padding: 42px 12px 12px;
   min-height: 120px;
   width: min(72%, 320px);
   display: flex;
   flex-direction: column;
+  gap: 10px;
   align-items: center;
   justify-content: center;
   z-index: 1;
@@ -451,6 +525,8 @@ input[type="text"]:focus {
 }
 
 .field-cards {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -459,15 +535,50 @@ input[type="text"]:focus {
   max-width: 280px;
 }
 
+.previous-field-card {
+  position: relative;
+  align-self: flex-start;
+  z-index: 0;
+  opacity: 0.32;
+  display: flex;
+  flex-wrap: nowrap;
+  width: 100%;
+  max-width: none;
+  pointer-events: none;
+}
+
+.previous-field-card .card {
+  flex: 0 0 32px;
+  width: 32px;
+  height: 46px;
+  margin: 0;
+  font-size: 14px;
+  line-height: 46px;
+  transform: rotate(-6deg) scale(0.88);
+  transform-origin: center;
+  box-shadow: none;
+}
+
 .turn-control-section {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 15px;
   padding: 12px 18px;
-  background: rgba(0, 0, 0, 0.25);
-  border-radius: 8px;
+  background: rgba(5, 31, 17, 0.58);
+  border: 1px solid rgba(199, 233, 207, 0.14);
+  border-radius: 12px;
   gap: 10px;
+  transition: border-color 0.18s ease, background 0.18s ease;
+}
+
+.turn-control-section.is-my-turn {
+  border-color: rgba(136, 214, 159, 0.55);
+  background: rgba(10, 57, 30, 0.62);
+}
+
+.turn-control-section.is-exchanging {
+  border-color: rgba(119, 195, 217, 0.5);
 }
 
 .turn-status-box {
@@ -475,9 +586,47 @@ input[type="text"]:focus {
   text-align: left;
 }
 
+.turn-status-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .turn-text {
-  font-size: 17px;
+  color: #f4faf5;
+  font-size: 16px;
+  font-weight: 700;
   margin: 0;
+}
+
+.turn-detail {
+  margin-top: 4px;
+  color: rgba(231, 243, 234, 0.7);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.turn-timer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 58px;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px solid rgba(175, 222, 188, 0.35);
+  border-radius: 999px;
+  background: rgba(8, 35, 20, 0.72);
+  color: #dff4e4;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.turn-timer.is-urgent {
+  border-color: rgba(245, 166, 166, 0.65);
+  background: rgba(105, 30, 30, 0.76);
+  color: #ffe5e5;
 }
 
 .control-actions {
@@ -489,7 +638,7 @@ input[type="text"]:focus {
   background-color: #27ae60;
   color: white;
   border: none;
-  border-radius: 6px;
+  border-radius: 9px;
   padding: 10px 20px;
   font-size: 16px;
   font-weight: bold;
@@ -512,7 +661,7 @@ input[type="text"]:focus {
   background-color: #e74c3c;
   color: white;
   border: none;
-  border-radius: 6px;
+  border-radius: 9px;
   padding: 10px 18px;
   font-size: 16px;
   font-weight: bold;
@@ -527,9 +676,10 @@ input[type="text"]:focus {
 
 /* 手札セクション */
 .hand-section {
-  background: rgba(0, 0, 0, 0.2);
+  background: rgba(5, 31, 17, 0.38);
   padding: 15px;
-  border-radius: 10px;
+  border: 1px solid rgba(199, 233, 207, 0.1);
+  border-radius: 12px;
 }
 
 .hand-header small {
@@ -673,7 +823,7 @@ input[type="text"]:focus {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  min-width: 112px;
+  min-width: 0;
   width: 112px;
   max-width: 112px;
   flex: 0 0 auto;
@@ -777,6 +927,34 @@ input[type="text"]:focus {
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
 }
 
+.game-finished-content {
+  width: min(94vw, 520px);
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  text-align: left;
+}
+
+.game-finished-content > h2 {
+  text-align: center;
+}
+
+.overall-ranking-modal-content {
+  width: min(94vw, 520px);
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+  text-align: left;
+}
+
+.overall-ranking-modal-content .rules-modal-header {
+  align-items: flex-start;
+  margin-bottom: 14px;
+}
+
+.overall-ranking-modal-content h2 {
+  margin: 0;
+  text-align: left;
+}
+
 .rules-modal-content {
   max-width: 520px;
   width: min(90vw, 520px);
@@ -836,6 +1014,88 @@ input[type="text"]:focus {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.ranking-result-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.overall-ranking-section {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  text-align: left;
+}
+
+.overall-ranking-section h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.overall-ranking-rounds {
+  margin: 4px 0 10px;
+  color: rgba(236, 240, 241, 0.68);
+  font-size: 12px;
+}
+
+.overall-ranking-list {
+  display: grid;
+  gap: 5px;
+}
+
+.overall-ranking-item {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto 52px;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 5px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.055);
+  text-align: left;
+}
+
+.overall-ranking-item.is-me {
+  border-color: rgba(120, 189, 142, 0.55);
+  background: rgba(74, 153, 98, 0.16);
+}
+
+.overall-rank-number {
+  color: #c8d7cc;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.overall-player-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+
+.overall-player-role {
+  color: rgba(236, 240, 241, 0.7);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.overall-points {
+  color: #f4f7ed;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.overall-points small {
+  margin-left: 3px;
+  color: rgba(236, 240, 241, 0.65);
+  font-size: 10px;
 }
 
 @media (max-width: 640px) {
@@ -902,13 +1162,13 @@ input[type="text"]:focus {
 
   .field-section {
     min-height: 80px;
-    padding: 18px 10px 12px;
+    padding: 40px 10px 12px;
     margin-bottom: 8px;
     width: min(74%, 280px);
   }
 
   .table-stage {
-    height: clamp(220px, 56vw, 300px);
+    height: clamp(320px, 84vw, 360px);
   }
 
   .turn-control-section {
@@ -920,6 +1180,25 @@ input[type="text"]:focus {
 
   .turn-status-box {
     text-align: center;
+  }
+
+  .turn-status-heading {
+    justify-content: center;
+  }
+
+  .game-action-message {
+    padding: 8px 10px;
+    font-size: 13px;
+  }
+
+  .game-finished-content {
+    padding: 18px 14px;
+  }
+
+  .overall-ranking-item {
+    grid-template-columns: 24px minmax(0, 1fr) auto 44px;
+    gap: 6px;
+    padding-inline: 6px;
   }
 
   .control-actions {
@@ -963,6 +1242,14 @@ input[type="text"]:focus {
 
   .card.joker {
     font-size: 10px;
+  }
+
+  .previous-field-card .card {
+    flex-basis: 26px;
+    width: 26px;
+    height: 38px;
+    font-size: 12px;
+    line-height: 38px;
   }
 
   .others-section {

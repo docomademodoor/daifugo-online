@@ -10,7 +10,7 @@
  * @param {Object} validation - isValidPlayの判定結果
  * @returns {Object} { clearField: boolean, skipCount: number, actionLogs: string[] }
  */
-function applyCardEffects(room, currentPlayer, playedCards, validation) {
+function applyCardEffects(room, currentPlayer, playedCards, validation, selections = {}) {
   let clearField = false;
   let skipCount = 1;
   const actionLogs = [];
@@ -83,15 +83,21 @@ function applyCardEffects(room, currentPlayer, playedCards, validation) {
 
   // 6. 10捨て (10を出した枚数分だけ、手札から不要なカードを破棄)
   if (room.rules.tenDiscard && playedCards.some(c => c.num === 10)) {
-    const discardCount = playedCards.filter(c => c.num === 10).length;
-    for (let i = 0; i < discardCount && currentPlayer.hand.length > 0; i++) {
-      const discarded = currentPlayer.hand.shift();
-      actionLogs.push(`【10捨て！】手札から ${discarded.suit}${discarded.num} を捨てました！`);
-    }
-    if (currentPlayer.hand.length === 0) {
-      currentPlayer.isWinner = true;
-      room.winners.push(currentPlayer);
-      currentPlayer.rank = room.winners.length;
+    if (Array.isArray(selections.discardedCards)) {
+      selections.discardedCards.forEach(discarded => {
+        actionLogs.push(`【10捨て！】${currentPlayer.name} は ${discarded.suit}${discarded.num} を捨てました。`);
+      });
+    } else {
+      const discardCount = playedCards.filter(c => c.num === 10).length;
+      for (let i = 0; i < discardCount && currentPlayer.hand.length > 0; i++) {
+        const discarded = currentPlayer.hand.shift();
+        actionLogs.push(`【10捨て！】手札から ${discarded.suit}${discarded.num} を捨てました！`);
+      }
+      if (currentPlayer.hand.length === 0) {
+        currentPlayer.isWinner = true;
+        room.winners.push(currentPlayer);
+        currentPlayer.rank = room.winners.length;
+      }
     }
   }
 
@@ -144,9 +150,16 @@ function checkMiyakoOchi(room, winnerPlayer) {
 
   const prevDaifugo = room.players.find(p => p.previousRole === '大富豪');
   if (prevDaifugo && prevDaifugo.id !== winnerPlayer.id) {
+    const usedRanks = new Set(room.players
+      .filter(player => player.id !== prevDaifugo.id && Number.isInteger(player.rank))
+      .map(player => player.rank));
+    let lastAvailableRank = room.players.length;
+    while (lastAvailableRank > 1 && usedRanks.has(lastAvailableRank)) {
+      lastAvailableRank--;
+    }
     prevDaifugo.hand = [];
     prevDaifugo.isWinner = false;
-    prevDaifugo.rank = room.players.length;
+    prevDaifugo.rank = lastAvailableRank;
     prevDaifugo.role = '大貧民';
     return `【都落ち！】大富豪だった ${prevDaifugo.name} は防衛失敗により大貧民に転落しました！`;
   }

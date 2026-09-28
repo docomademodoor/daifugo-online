@@ -31,6 +31,8 @@ describe('RoomManager flow', () => {
     expect(started.success).toBe(true);
     expect(roomManager.rooms['flow-room'].status).toBe('playing');
     expect(roomManager.rooms['flow-room'].players.every(p => p.hand.length > 0)).toBe(true);
+    expect(roomManager.rooms['flow-room'].firstTurnExemptPlayerId)
+      .toBe(roomManager.rooms['flow-room'].players[roomManager.rooms['flow-room'].turnIndex].id);
   });
 
   it('全員がパスしたら場を流して最後に出した人のターンへ戻る', () => {
@@ -53,6 +55,129 @@ describe('RoomManager flow', () => {
     expect(result.success).toBe(true);
     expect(room.fieldCards.length).toBe(0);
     expect(room.turnIndex).toBe(1);
+  });
+
+  it('場が空でもパスでき、次のプレイヤーへ手番を渡す', () => {
+    roomManager.rooms = {};
+    roomManager.createRoom({ id: 'p1' }, { roomId: 'empty-pass-room', playerName: 'A', playerId: 'a', rules: {} });
+    roomManager.joinRoom({ id: 'p2' }, { roomId: 'empty-pass-room', playerName: 'B', playerId: 'b' });
+
+    const room = roomManager.rooms['empty-pass-room'];
+    room.status = 'playing';
+    room.turnIndex = 0;
+    room.fieldCards = [];
+    room.players[0].hand = [{ id: 'a-card' }];
+    room.players[1].hand = [{ id: 'b-card' }];
+    room.firstTurnExemptPlayerId = 'p1';
+
+    const result = roomManager.passTurn('p1', 'empty-pass-room');
+
+    expect(result.success).toBe(true);
+    expect(room.fieldCards).toEqual([]);
+    expect(room.turnIndex).toBe(1);
+    expect(room.firstTurnExemptPlayerId).toBe(null);
+  });
+});
+
+describe('CPU seats and room lock', () => {
+  it('ホストが選んだCPU難易度を保持する', () => {
+    roomManager.rooms = {};
+    roomManager.createRoom({ id: 'host' }, { roomId: 'cpu-difficulty', playerName: 'Host', playerId: 'host-player', rules: {} });
+
+    const result = roomManager.addCpuPlayer('host', 'cpu-difficulty', 'hard');
+
+    expect(result.success).toBe(true);
+    expect(result.room.players[1].difficulty).toBe('hard');
+    expect(roomManager.getPublicState(result.room).players[1].difficulty).toBe('hard');
+  });
+
+  it('空席がある場合はCPUを残したまま人間が参加する', () => {
+    roomManager.rooms = {};
+    roomManager.createRoom({ id: 'host' }, { roomId: 'cpu-replace', playerName: 'Host', playerId: 'host-player', rules: {} });
+    roomManager.addCpuPlayer('host', 'cpu-replace');
+    roomManager.addCpuPlayer('host', 'cpu-replace');
+
+    const joined = roomManager.joinRoom({ id: 'guest' }, {
+      roomId: 'cpu-replace',
+      playerName: 'Guest',
+      playerId: 'guest-player'
+    });
+
+    expect(joined.success).toBe(true);
+    expect(joined.room.players).toHaveLength(4);
+    expect(joined.room.players.filter(player => player.isCpu)).toHaveLength(2);
+    expect(joined.room.players.some(player => player.playerId === 'guest-player')).toBe(true);
+  });
+
+  it('8人で満員の場合だけ人間参加時にCPUを1体置き換える', () => {
+    roomManager.rooms = {};
+    roomManager.createRoom({ id: 'host' }, { roomId: 'cpu-full-replace', playerName: 'Host', playerId: 'host-player', rules: {} });
+    for (let count = 0; count < 7; count++) roomManager.addCpuPlayer('host', 'cpu-full-replace');
+
+    const joined = roomManager.joinRoom({ id: 'guest' }, {
+      roomId: 'cpu-full-replace',
+      playerName: 'Guest',
+      playerId: 'guest-player'
+    });
+
+    expect(joined.success).toBe(true);
+    expect(joined.room.players).toHaveLength(8);
+    expect(joined.room.players.filter(player => player.isCpu)).toHaveLength(6);
+    expect(joined.room.players.some(player => player.playerId === 'guest-player')).toBe(true);
+  });
+
+  it('最大8人までCPUを追加でき、ホストはCPUを削除できる', () => {
+    roomManager.rooms = {};
+    roomManager.createRoom({ id: 'host' }, { roomId: 'cpu-cap', playerName: 'Host', playerId: 'host-player', rules: {} });
+
+    for (let count = 0; count < 7; count++) {
+      expect(roomManager.addCpuPlayer('host', 'cpu-cap').success).toBe(true);
+    }
+    expect(roomManager.rooms['cpu-cap'].players).toHaveLength(8);
+    expect(roomManager.addCpuPlayer('host', 'cpu-cap').success).toBe(false);
+    expect(roomManager.removeCpuPlayer('host', 'cpu-cap').success).toBe(true);
+    expect(roomManager.rooms['cpu-cap'].players).toHaveLength(7);
+    expect(roomManager.removeCpuPlayer('not-host', 'cpu-cap').success).toBe(false);
+  });
+
+  it('累積順位中に参加者構成が変わると順位シリーズをリセットする', () => {
+    roomManager.rooms = {};
+    roomManager.createRoom({ id: 'host' }, { roomId: 'cpu-series-reset', playerName: 'Host', playerId: 'host-player', rules: {} });
+    const room = roomManager.rooms['cpu-series-reset'];
+    room.completedRounds = 3;
+    room.players[0].totalPoints = 12;
+    room.players[0].role = '大富豪';
+    room.players[0].previousRole = '大富豪';
+
+    const result = roomManager.addCpuPlayer('host', 'cpu-series-reset');
+
+    expect(result.success).toBe(true);
+    expect(room.completedRounds).toBe(0);
+    expect(room.players.every(player => player.totalPoints === 0)).toBe(true);
+    expect(room.players.every(player => player.previousRole == null)).toBe(true);
+  });
+
+  it('ロック中は新規参加を拒否するが既存メンバーの再接続は許可する', () => {
+    roomManager.rooms = {};
+    roomManager.createRoom({ id: 'host' }, { roomId: 'locked-room', playerName: 'Host', playerId: 'host-player', rules: {} });
+    roomManager.addCpuPlayer('host', 'locked-room');
+    expect(roomManager.setRoomLock('host', 'locked-room', true).success).toBe(true);
+
+    const rejected = roomManager.joinRoom({ id: 'new-guest' }, {
+      roomId: 'locked-room',
+      playerName: 'Guest',
+      playerId: 'guest-player'
+    });
+    expect(rejected.success).toBe(false);
+    expect(rejected.message).toContain('ロック');
+
+    const reconnect = roomManager.joinRoom({ id: 'host-reconnected' }, {
+      roomId: 'locked-room',
+      playerName: 'Host',
+      playerId: 'host-player'
+    });
+    expect(reconnect.success).toBe(true);
+    expect(reconnect.room.hostId).toBe('host-reconnected');
   });
 });
 
