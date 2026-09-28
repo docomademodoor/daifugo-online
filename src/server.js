@@ -12,7 +12,7 @@ const io = new Server(server, {
   cors: { origin: '*' }
 });
 const cpuTurnTimers = new Map();
-const CPU_TURN_DELAY_MS = Math.max(0, Number(process.env.CPU_TURN_DELAY_MS) || 550);
+const CPU_TURN_DELAY_MS = Math.max(0, Number(process.env.CPU_TURN_DELAY_MS) || 1200);
 const humanTurnTimers = new Map();
 const TURN_SELECTION_TIMEOUT_MS = Math.max(100, Number(process.env.TURN_SELECTION_TIMEOUT_MS) || 30000);
 
@@ -225,15 +225,71 @@ io.on('connection', (socket) => {
     socket.data.playerId = stablePlayerId;
     const result = roomManager.joinRoom(socket, { roomId, playerName, playerId: stablePlayerId });
     if (!result.success) {
-      socket.emit('error', result.message);
+      const requestResult = roomManager.requestJoin(socket, { roomId, playerName, playerId: stablePlayerId });
+      if (!requestResult.success) {
+        socket.emit('error', result.message);
+        return;
+      }
+      socket.emit('join-request-pending', {
+        roomId,
+        requestId: requestResult.request.requestId,
+        message: 'ホストの許可を待っています。'
+      });
+      io.to(requestResult.hostId).emit('join-request-received', {
+        roomId,
+        requestId: requestResult.request.requestId,
+        playerName: requestResult.request.playerName
+      });
       return;
     }
 
     socket.join(result.room.id);
     const publicState = roomManager.getPublicState(result.room);
     const isHost = result.room.hostId === socket.id;
-    socket.emit('room-joined', { room: publicState, isHost, playerId: stablePlayerId });
+    const rejoinedPlayer = result.room.players.find(player => player.id === socket.id);
+    if (result.room.status === 'playing' || result.room.status === 'waiting-exchange') {
+      socket.emit('game-started', {
+        ...publicState,
+        hand: rejoinedPlayer?.hand || []
+      });
+    } else {
+      socket.emit('room-joined', { room: publicState, isHost, playerId: stablePlayerId });
+    }
+    scheduleHumanTurnTimer(roomId);
     io.to(result.room.id).emit('room-updated', publicState);
+  });
+
+  socket.on('approve-join-request', ({ roomId, requestId }) => {
+    const result = roomManager.approveJoinRequest(socket.id, roomId, requestId);
+    if (!result.success) {
+      socket.emit('error', result.message);
+      return;
+    }
+
+    const publicState = roomManager.getPublicState(result.room);
+    const joiningSocket = io.sockets.sockets.get(result.player.id);
+    joiningSocket?.join(roomId);
+    socket.emit('join-request-resolved', { requestId, approved: true });
+    io.to(result.player.id).emit('game-started', {
+      ...publicState,
+      status: 'finished',
+      hand: []
+    });
+    io.to(roomId).except(result.player.id).emit('state-updated', publicState);
+  });
+
+  socket.on('reject-join-request', ({ roomId, requestId }) => {
+    const result = roomManager.rejectJoinRequest(socket.id, roomId, requestId);
+    if (!result.success) {
+      socket.emit('error', result.message);
+      return;
+    }
+
+    socket.emit('join-request-resolved', { requestId, approved: false });
+    io.to(result.request.socketId).emit('join-request-result', {
+      approved: false,
+      message: 'ホストが参加申請を拒否しました。'
+    });
   });
 
   socket.on('check-room-exists', (roomId) => {

@@ -76,7 +76,8 @@ class RoomManager {
       completedRounds: 0,
       firstTurnExemptPlayerId: null,
       turnDeadlineAt: null,
-      pendingSideSelection: null
+      pendingSideSelection: null,
+      joinRequests: {}
     };
 
     this.rooms[trimmedId] = newRoom;
@@ -94,10 +95,6 @@ class RoomManager {
       return { success: false, message: 'ルームが見つかりません。合言葉を確認するか、新規作成してください。' };
     }
 
-    if (room.status !== 'waiting' && room.status !== 'finished') {
-      return { success: false, message: 'このゲームは現在プレイ中です' };
-    }
-
     const existingPlayer = room.players.find(p => p.playerId === (playerId || socket.id));
     if (existingPlayer) {
       const previousSocketId = existingPlayer.id;
@@ -107,7 +104,22 @@ class RoomManager {
       if (room.hostId === previousSocketId) {
         room.hostId = socket.id;
       }
+      if (room.exchangeRequirements?.[previousSocketId] !== undefined) {
+        room.exchangeRequirements[socket.id] = room.exchangeRequirements[previousSocketId];
+        delete room.exchangeRequirements[previousSocketId];
+      }
+      if (room.exchangeSelections?.[previousSocketId]) {
+        room.exchangeSelections[socket.id] = room.exchangeSelections[previousSocketId];
+        delete room.exchangeSelections[previousSocketId];
+      }
+      if (room.pendingSideSelection?.playerId === previousSocketId) {
+        room.pendingSideSelection.playerId = socket.id;
+      }
       return { success: true, room, playerId: existingPlayer.playerId };
+    }
+
+    if (room.status !== 'waiting') {
+      return { success: false, message: 'このゲームは現在プレイ中です' };
     }
 
     if (room.isLocked) {
@@ -145,6 +157,68 @@ class RoomManager {
     room.players.push(newPlayer);
 
     return { success: true, room, playerId: newPlayer.playerId };
+  }
+
+  requestJoin(socket, { roomId, playerName, playerId }) {
+    const room = this.rooms[roomId];
+    if (!room) return { success: false, message: 'ルームが見つかりません。' };
+    if (room.status !== 'playing' && room.status !== 'finished') {
+      return { success: false, message: 'このルームは途中参加の受付状態ではありません。' };
+    }
+    if (room.isLocked) return { success: false, message: 'このルームはロックされています。' };
+    if (room.players.length >= 8) return { success: false, message: 'ルームが満員です。' };
+
+    const stablePlayerId = playerId || socket.id;
+    const existingRequest = Object.values(room.joinRequests || {})
+      .find(request => request.playerId === stablePlayerId);
+    if (existingRequest) return { success: true, request: existingRequest };
+
+    const requestId = `join-${Date.now()}-${socket.id}`;
+    const request = {
+      requestId,
+      socketId: socket.id,
+      playerId: stablePlayerId,
+      playerName: (playerName && playerName.trim()) || `プレイヤー${room.players.length + 1}`
+    };
+    room.joinRequests[requestId] = request;
+    return { success: true, request, hostId: room.hostId };
+  }
+
+  approveJoinRequest(socketId, roomId, requestId) {
+    const room = this.rooms[roomId];
+    if (!room) return { success: false, message: 'ルームが見つかりません。' };
+    if (room.hostId !== socketId) return { success: false, message: 'ホストのみ許可できます。' };
+    const request = room.joinRequests?.[requestId];
+    if (!request) return { success: false, message: '参加申請が見つかりません。' };
+    if (room.players.length >= 8) return { success: false, message: 'ルームが満員です。' };
+
+    const player = {
+      id: request.socketId,
+      playerId: request.playerId,
+      name: request.playerName,
+      hand: [],
+      isWinner: false,
+      rank: null,
+      role: '平民',
+      connected: true,
+      isCpu: false,
+      totalPoints: 0,
+      isLateJoiner: true
+    };
+    room.players.push(player);
+    delete room.joinRequests[requestId];
+    room.actionMessage = `${player.name}が途中参加しました`;
+    return { success: true, room, player };
+  }
+
+  rejectJoinRequest(socketId, roomId, requestId) {
+    const room = this.rooms[roomId];
+    if (!room) return { success: false, message: 'ルームが見つかりません。' };
+    if (room.hostId !== socketId) return { success: false, message: 'ホストのみ拒否できます。' };
+    const request = room.joinRequests?.[requestId];
+    if (!request) return { success: false, message: '参加申請が見つかりません。' };
+    delete room.joinRequests[requestId];
+    return { success: true, room, request };
   }
 
   addCpuPlayer(socketId, roomId, difficulty = 'normal') {
@@ -248,6 +322,15 @@ class RoomManager {
     room.firstTurnExemptPlayerId = null;
     room.pendingSideSelection = null;
 
+    if (room.players.some(player => player.isLateJoiner)) {
+      room.previousRoles = null;
+      room.players.forEach(player => {
+        player.isLateJoiner = false;
+        player.role = null;
+        player.previousRole = null;
+      });
+    }
+
     const deck = createDeck(room.rules.includeJoker);
     room.players.forEach(p => {
       p.hand = [];
@@ -308,8 +391,6 @@ class RoomManager {
   }
 
   buildExchangePlan(room) {
-    if (room.players.length < 4) return [];
-
     const daifugo = room.players.find(p => p.role === '大富豪');
     const fugo = room.players.find(p => p.role === '富豪');
     const hinmin = room.players.find(p => p.role === '貧民');
@@ -713,6 +794,7 @@ class RoomManager {
       this.assignRoles(room);
       room.completedRounds = (room.completedRounds || 0) + 1;
       room.players.forEach(player => {
+        if (player.isLateJoiner) return;
         player.totalPoints = (player.totalPoints || 0) + (ROLE_POINTS[player.role] ?? 0);
       });
       room.actionMessage = 'ゲーム終了！順位と階級が決定しました！';
@@ -720,7 +802,9 @@ class RoomManager {
   }
 
   assignRoles(room) {
-    const sorted = [...room.players].sort((a, b) => (a.rank || 99) - (b.rank || 99));
+    const sorted = room.players
+      .filter(player => !player.isLateJoiner)
+      .sort((a, b) => (a.rank || 99) - (b.rank || 99));
     const count = sorted.length;
     const roleTables = {
       2: ['富豪', '貧民'],
@@ -745,6 +829,10 @@ class RoomManager {
     sorted.forEach(p => {
       p.previousRole = p.role;
       room.previousRoles[p.id] = p.role;
+    });
+    room.players.filter(player => player.isLateJoiner).forEach(player => {
+      player.role = '平民';
+      player.rank = null;
     });
   }
 

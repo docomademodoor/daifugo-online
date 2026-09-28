@@ -927,14 +927,50 @@ input[type="text"]:focus {
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
 }
 
+.join-request-content {
+  width: min(92vw, 420px);
+}
+
+.join-request-content .modal-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 20px;
+}
+
 .game-finished-content {
   width: min(94vw, 520px);
   max-height: calc(100vh - 24px);
   overflow-y: auto;
   text-align: left;
+  padding: 26px 22px 20px;
+  border: 1px solid rgba(177, 231, 190, 0.24);
+  background: linear-gradient(145deg, rgba(24, 68, 39, 0.98), rgba(9, 28, 18, 0.98));
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.48), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+}
+
+.result-kicker {
+  margin-bottom: 5px;
+  color: #9bd8aa;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-align: center;
 }
 
 .game-finished-content > h2 {
+  margin-bottom: 4px;
+  color: #f4fbf5;
+  font-size: 25px;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+
+.result-summary {
+  margin-bottom: 18px;
+  color: rgba(232, 246, 235, 0.65);
+  font-size: 12px;
   text-align: center;
 }
 
@@ -1001,26 +1037,88 @@ input[type="text"]:focus {
 .ranking-list {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 15px;
+  gap: 7px;
   text-align: left;
 }
 
 .ranking-item {
-  background: rgba(255, 255, 255, 0.1);
-  padding: 10px 15px;
-  border-radius: 6px;
-  font-size: 16px;
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr) auto;
   align-items: center;
+  gap: 10px;
+  min-height: 58px;
+  padding: 8px 12px;
+  border: 1px solid rgba(210, 239, 216, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.065);
+  font-size: 14px;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.ranking-item.is-me {
+  border-color: rgba(141, 225, 161, 0.72);
+  background: rgba(81, 170, 103, 0.2);
+  box-shadow: 0 0 18px rgba(87, 190, 112, 0.12);
+}
+
+.ranking-item.rank-1 {
+  min-height: 68px;
+  border-color: rgba(244, 210, 113, 0.65);
+  background: linear-gradient(100deg, rgba(143, 106, 31, 0.42), rgba(255, 255, 255, 0.08));
+}
+
+.ranking-item.rank-2 {
+  border-color: rgba(190, 207, 215, 0.34);
+}
+
+.ranking-item.rank-3 {
+  border-color: rgba(190, 145, 102, 0.34);
+}
+
+.ranking-place {
+  color: #f2d77e;
+  font-size: 17px;
+  font-weight: 850;
+  text-align: center;
+}
+
+.ranking-item.rank-2 .ranking-place,
+.ranking-item.rank-3 .ranking-place {
+  color: #d7e2dc;
+  font-size: 15px;
+}
+
+.ranking-player {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+}
+
+.ranking-player strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ranking-result-meta {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 3px;
   white-space: nowrap;
+}
+
+.ranking-result-meta strong {
+  color: #f3f8ef;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ranking-result-meta small {
+  color: rgba(236, 240, 241, 0.62);
+  font-size: 10px;
 }
 
 .overall-ranking-section {
@@ -1110,6 +1208,13 @@ input[type="text"]:focus {
     overflow-y: auto;
   }
 
+  body.game-active {
+    height: 100dvh;
+    min-height: 100dvh;
+    padding: 4px;
+    overflow: hidden;
+  }
+
   .container {
     max-width: 100%;
     min-height: 0;
@@ -1123,6 +1228,12 @@ input[type="text"]:focus {
     display: flex;
     flex-direction: column;
     gap: 8px;
+  }
+
+  body.game-active #game-container {
+    height: calc(100dvh - 8px);
+    min-height: 0;
+    overflow: hidden;
   }
 
   h1 {
@@ -1168,7 +1279,10 @@ input[type="text"]:focus {
   }
 
   .table-stage {
-    height: clamp(320px, 84vw, 360px);
+    height: clamp(220px, 38vh, 300px);
+    flex: 0 1 auto;
+    min-height: 0;
+    overflow: hidden;
   }
 
   .turn-control-section {
@@ -1202,11 +1316,13 @@ input[type="text"]:focus {
   }
 
   .control-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     width: 100%;
   }
 
   .control-actions button {
-    flex: 1;
+    width: 100%;
     min-width: 0;
   }
 
@@ -1226,9 +1342,10 @@ input[type="text"]:focus {
 
   .hand-cards {
     min-height: 0;
-    max-height: 190px;
+    max-height: min(190px, 28vh);
     padding: 6px 0 2px;
     align-content: flex-start;
+    overflow: hidden;
   }
 
   .card {

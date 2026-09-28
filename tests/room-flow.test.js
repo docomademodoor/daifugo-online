@@ -35,6 +35,68 @@ describe('RoomManager flow', () => {
       .toBe(roomManager.rooms['flow-room'].players[roomManager.rooms['flow-room'].turnIndex].id);
   });
 
+  it('プレイ中のプレイヤーが安定IDで再接続できる', () => {
+    roomManager.rooms = {};
+    roomManager.createRoom({ id: 'old-host' }, { roomId: 'reconnect-playing', playerName: 'A', playerId: 'stable-a', rules: {} });
+    roomManager.joinRoom({ id: 'guest' }, { roomId: 'reconnect-playing', playerName: 'B', playerId: 'stable-b' });
+    const room = roomManager.rooms['reconnect-playing'];
+    room.status = 'playing';
+    room.players[0].hand = [{ id: 'a-card', suit: '♥', num: 3, strength: 1 }];
+
+    const result = roomManager.joinRoom({ id: 'new-host' }, {
+      roomId: 'reconnect-playing',
+      playerName: 'A',
+      playerId: 'stable-a'
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.room.players.find(player => player.playerId === 'stable-a').id).toBe('new-host');
+    expect(result.room.players.find(player => player.playerId === 'stable-a').hand).toEqual([
+      { id: 'a-card', suit: '♥', num: 3, strength: 1 }
+    ]);
+  });
+
+  it('交換中に再接続すると交換要求を新しいSocket IDへ移す', () => {
+    roomManager.rooms = {};
+    roomManager.createRoom({ id: 'old-host' }, { roomId: 'reconnect-exchange', playerName: 'A', playerId: 'stable-a', rules: {} });
+    roomManager.joinRoom({ id: 'guest' }, { roomId: 'reconnect-exchange', playerName: 'B', playerId: 'stable-b' });
+    const room = roomManager.rooms['reconnect-exchange'];
+    room.status = 'waiting-exchange';
+    room.exchangeRequirements = { 'old-host': 1 };
+
+    roomManager.leaveRoom('old-host', 'stable-a');
+    const result = roomManager.joinRoom({ id: 'new-host' }, {
+      roomId: 'reconnect-exchange',
+      playerName: 'A',
+      playerId: 'stable-a'
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.room.exchangeRequirements).toEqual({ 'new-host': 1 });
+  });
+
+  it('ゲーム中の途中参加はホスト許可後に平民0ポイントで追加される', () => {
+    roomManager.rooms = {};
+    roomManager.createRoom({ id: 'host' }, { roomId: 'late-join', playerName: 'Host', playerId: 'host-player', rules: {} });
+    roomManager.joinRoom({ id: 'guest' }, { roomId: 'late-join', playerName: 'Guest', playerId: 'guest-player' });
+    const room = roomManager.rooms['late-join'];
+    room.status = 'playing';
+
+    const request = roomManager.requestJoin({ id: 'late-socket' }, {
+      roomId: 'late-join',
+      playerName: 'Late',
+      playerId: 'late-player'
+    });
+    const result = roomManager.approveJoinRequest('host', 'late-join', request.request.requestId);
+    const player = result.room.players.find(candidate => candidate.playerId === 'late-player');
+
+    expect(result.success).toBe(true);
+    expect(player.role).toBe('平民');
+    expect(player.totalPoints).toBe(0);
+    expect(player.isLateJoiner).toBe(true);
+    expect(player.hand).toEqual([]);
+  });
+
   it('カード交換がある次ラウンドは交換後も大貧民から先に始める', () => {
     roomManager.rooms = {};
     roomManager.createRoom({ id: 'host' }, { roomId: 'exchange-starter', playerName: 'A', playerId: 'a', rules: {} });
@@ -61,7 +123,7 @@ describe('RoomManager flow', () => {
     expect(result.room.players[result.room.turnIndex].role).toBe('大貧民');
   });
 
-  it('3人戦の富豪・平民・貧民ではカード交換せず貧民から次ラウンドを始める', () => {
+  it('3人戦の富豪・平民・貧民では富豪から貧民へ1枚交換する', () => {
     roomManager.rooms = {};
     roomManager.createRoom({ id: 'a' }, { roomId: 'three-role-round', playerName: 'A', playerId: 'a', rules: {} });
     roomManager.joinRoom({ id: 'b' }, { roomId: 'three-role-round', playerName: 'B', playerId: 'b' });
@@ -72,7 +134,9 @@ describe('RoomManager flow', () => {
     room.players[2].role = '貧民';
     room.previousRoles = Object.fromEntries(room.players.map(player => [player.id, player.role]));
 
-    expect(roomManager.buildExchangePlan(room)).toEqual([]);
+    expect(roomManager.buildExchangePlan(room)).toEqual([
+      { fromId: room.players[0].id, toId: room.players[2].id, count: 1 }
+    ]);
 
     const originalRandom = Math.random;
     Math.random = () => 0;
@@ -83,7 +147,26 @@ describe('RoomManager flow', () => {
       Math.random = originalRandom;
     }
 
-    expect(started.room.status).toBe('playing');
+    expect(started.room.status).toBe('waiting-exchange');
+    const fugo = started.room.players.find(player => player.role === '富豪');
+    expect(started.room.exchangeRequirements[fugo.id]).toBe(1);
+    expect(started.room.players[started.room.turnIndex].role).toBe('貧民');
+  });
+
+  it('2人戦の2ゲーム目も富豪から貧民へ1枚交換する', () => {
+    roomManager.rooms = {};
+    roomManager.createRoom({ id: 'a' }, { roomId: 'two-role-round', playerName: 'A', playerId: 'a', rules: {} });
+    roomManager.joinRoom({ id: 'b' }, { roomId: 'two-role-round', playerName: 'B', playerId: 'b' });
+    const room = roomManager.rooms['two-role-round'];
+    room.players[0].role = '富豪';
+    room.players[1].role = '貧民';
+    room.previousRoles = Object.fromEntries(room.players.map(player => [player.id, player.role]));
+
+    const started = roomManager.startGame('a', 'two-role-round');
+
+    expect(started.room.status).toBe('waiting-exchange');
+    const fugo = started.room.players.find(player => player.role === '富豪');
+    expect(started.room.exchangeRequirements[fugo.id]).toBe(1);
     expect(started.room.players[started.room.turnIndex].role).toBe('貧民');
   });
 
@@ -345,6 +428,7 @@ describe('Card effects', () => {
     const result = applyCardEffects(room, currentPlayer, [{ id: 's5', suit: '♠', num: 5, strength: 5 }], { valid: true });
 
     expect(result.skipCount).toBe(2);
+      expect(result.clearField).toBe(true);
     expect(result.actionLogs.join(' ')).toContain('5飛び');
   });
 });

@@ -95,6 +95,9 @@ function applyCardEffects(room, currentPlayer, playedCards, validation, selectio
     const otherActivePlayers = players.filter(p => p.id !== currentPlayer.id && p.hand.length > 0).length;
     skipCount = Math.min(playedCards.length + 1, otherActivePlayers + 1);
     const selfTurnNote = skipCount >= otherActivePlayers + 1 ? '（人数超過で自分の番に戻る）' : '';
+    if (skipCount >= otherActivePlayers + 1) {
+      clearField = true;
+    }
     actionLogs.push(`【5飛び！】${playedCards.length}枚分、${skipCount - 1}人スキップ${selfTurnNote}！`);
   }
 

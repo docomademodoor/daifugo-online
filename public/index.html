@@ -52,7 +52,7 @@
             </label>
             <label class="rule-checkbox">
               <input type="checkbox" id="rule-numberLock" checked>
-              <span><strong>数字縛り</strong><small>スートを問わず数字が続いたら、次の数字で出す</small></span>
+              <span><strong>数字縛り</strong><small>マークを問わず数字が続いたら、次の数字で出す</small></span>
             </label>
             <label class="rule-checkbox">
               <input type="checkbox" id="rule-fiveSkip" checked>
@@ -186,6 +186,14 @@
       <div id="hand" class="hand-cards"></div>
     </div>
 
+      <div id="join-request-modal" class="modal" style="display:none;" role="dialog" aria-modal="true">
+        <div class="modal-content join-request-content">
+          <h2 id="join-request-title">途中参加の申請</h2>
+          <p id="join-request-message"></p>
+          <div id="join-request-actions" class="modal-actions"></div>
+        </div>
+      </div>
+
       <!-- ルールポップアップ -->
     <div id="rules-modal" class="modal rules-modal" style="display:none;">
       <div class="modal-content rules-modal-content">
@@ -202,6 +210,7 @@
         <div class="rules-modal-header">
           <div>
             <h2 id="live-overall-ranking-heading">総合順位</h2>
+
             <p id="live-overall-ranking-rounds" class="overall-ranking-rounds"></p>
           </div>
           <button class="secondary-btn" type="button" onclick="toggleOverallRanking(false)">閉じる</button>
@@ -213,7 +222,9 @@
     <!-- ゲーム終了ダイアログ -->
     <div id="game-finished-modal" class="modal" style="display:none;">
       <div class="modal-content game-finished-content">
+        <p class="result-kicker">ROUND COMPLETE</p>
         <h2>対戦結果</h2>
+        <p class="result-summary">今回の順位と役職ポイント</p>
         <div id="ranking-list" class="ranking-list"></div>
         <section class="overall-ranking-section" aria-labelledby="overall-ranking-heading">
           <h3 id="overall-ranking-heading">総合順位</h3>

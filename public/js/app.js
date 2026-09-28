@@ -8,6 +8,7 @@ let currentHand = [];
 let selectedCardIds = new Set();
 let pendingSideSelection = null;
 let pendingExchangeSelection = null;
+let activeJoinRequest = null;
 let latestGameState = null;
 let previousFieldCards = [];
 let turnCountdownInterval = null;
@@ -47,7 +48,7 @@ const RULE_DETAILS = {
   staircase: '同じマークの連番を出せる',
   staircaseRevolution: '同じマークの連番4枚以上で革命を起こす',
   elevenBack: 'Jを含む出し方で、場が流れるまで強さが逆転する',
-  numberLock: 'スートを問わず、同じ枚数で数字が連続した後は次の数字だけ出せる',
+  numberLock: 'マークを問わず、同じ枚数で数字が連続した後は次の数字だけ出せる',
   fiveSkip: '5を含む出し方で飛ばし、人数超過時は自分の番に戻る',
   sevenPass: '7を出すと次の人へ枚数分を受け渡す',
   tenDiscard: '10を出すと、手札から1枚を捨てる',
@@ -58,6 +59,7 @@ const RULE_DETAILS = {
 };
 
 const FIXED_RULE_KEYS = new Set([
+  'eightCut',
   'revolution',
   'suitLock',
   'spe3',
@@ -76,6 +78,35 @@ const SWITCHABLE_RULE_KEYS = [
   'sevenPass',
   'tenDiscard'
 ];
+
+const RULE_DISPLAY_ORDER = [
+  'revolution',
+  'suitLock',
+  'spe3',
+  'staircase',
+  'staircaseRevolution',
+  'forbiddenFinish',
+  'miyakoOchi',
+  'dia3Start',
+  'includeJoker',
+  'numberLock',
+  'fiveSkip',
+  'sevenPass',
+  'eightCut',
+  'tenDiscard',
+  'elevenBack'
+];
+
+const RULE_DISPLAY_ORDER_INDEX = new Map(
+  RULE_DISPLAY_ORDER.map((key, index) => [key, index])
+);
+
+function sortRulesForDisplay(items) {
+  return [...items].sort((left, right) =>
+    (RULE_DISPLAY_ORDER_INDEX.get(left.key ?? left) ?? Number.MAX_SAFE_INTEGER)
+      - (RULE_DISPLAY_ORDER_INDEX.get(right.key ?? right) ?? Number.MAX_SAFE_INTEGER)
+  );
+}
 
 const ROLE_CLASSES = {
   '大富豪': 'role-daifugo',
@@ -240,6 +271,64 @@ socket.on('room-exists', ({ roomId, exists }) => {
 socket.on('error', (msg) => {
   console.warn('サーバーエラー受信:', msg);
   showError(msg);
+});
+
+function showJoinRequestModal(mode, data) {
+  const modal = document.getElementById('join-request-modal');
+  const title = document.getElementById('join-request-title');
+  const message = document.getElementById('join-request-message');
+  const actions = document.getElementById('join-request-actions');
+  if (!modal || !title || !message || !actions) return;
+
+  activeJoinRequest = data;
+  title.innerText = mode === 'host' ? '途中参加の申請' : '途中参加を申請しました';
+  message.innerText = mode === 'host'
+    ? `${data.playerName} さんが途中参加を希望しています。`
+    : data.message;
+  actions.innerHTML = mode === 'host'
+    ? '<button class="primary-btn" type="button" onclick="approveJoinRequest()">許可</button><button class="secondary-btn" type="button" onclick="rejectJoinRequest()">拒否</button>'
+    : '<button class="secondary-btn" type="button" onclick="closeJoinRequestModal()">閉じる</button>';
+  modal.style.display = 'flex';
+}
+
+function closeJoinRequestModal() {
+  const modal = document.getElementById('join-request-modal');
+  if (modal) modal.style.display = 'none';
+  activeJoinRequest = null;
+}
+
+function approveJoinRequest() {
+  if (!activeJoinRequest) return;
+  socket.emit('approve-join-request', {
+    roomId: activeJoinRequest.roomId,
+    requestId: activeJoinRequest.requestId
+  });
+}
+
+function rejectJoinRequest() {
+  if (!activeJoinRequest) return;
+  socket.emit('reject-join-request', {
+    roomId: activeJoinRequest.roomId,
+    requestId: activeJoinRequest.requestId
+  });
+}
+
+socket.on('join-request-pending', (data) => {
+  showJoinRequestModal('requester', data);
+});
+
+socket.on('join-request-received', (data) => {
+  showJoinRequestModal('host', data);
+});
+
+socket.on('join-request-resolved', () => {
+  closeJoinRequestModal();
+});
+
+socket.on('join-request-result', (data) => {
+  showJoinRequestModal('requester', {
+    message: data.message || '参加申請の結果を受信しました。'
+  });
 });
 
 socket.on('turn-timer-paused', ({ roomId }) => {
@@ -449,6 +538,7 @@ function resetToLobbyView() {
   if (overallRankingModal) overallRankingModal.style.display = 'none';
   renderTurnCountdown(null);
   document.body.classList.remove('revolution-mode');
+  document.body.classList.remove('game-active');
   document.documentElement.classList.remove('revolution-mode');
 
   resetViewportLayout();
@@ -560,7 +650,7 @@ function renderRuleBadges(elementId, rules) {
   const container = document.getElementById(elementId);
   if (!container || !rules) return;
 
-  const visibleKeys = SWITCHABLE_RULE_KEYS.filter(k => rules[k]);
+  const visibleKeys = sortRulesForDisplay(SWITCHABLE_RULE_KEYS.filter(k => rules[k]));
   const badges = visibleKeys.map(k => `<span class="badge">${RULE_LABELS[k] || k}</span>`);
 
   container.innerHTML = badges.length > 0 ? badges.join('') : '<span class="badge">ルール追加なし</span>';
@@ -574,8 +664,8 @@ function renderRulesModal(rules) {
     .filter(k => rules[k])
     .map(k => ({ key: k, label: RULE_LABELS[k] || k, detail: RULE_DETAILS[k] || 'ルール適用中' }));
 
-  const switchable = enabledRules.filter(rule => SWITCHABLE_RULE_KEYS.includes(rule.key));
-  const fixed = enabledRules.filter(rule => FIXED_RULE_KEYS.has(rule.key));
+  const switchable = sortRulesForDisplay(enabledRules.filter(rule => SWITCHABLE_RULE_KEYS.includes(rule.key)));
+  const fixed = sortRulesForDisplay(enabledRules.filter(rule => FIXED_RULE_KEYS.has(rule.key)));
 
   const renderSection = (title, items) => {
     if (items.length === 0) return '';
@@ -641,8 +731,13 @@ function applyViewportFit() {
       gameContainer.style.transform = 'none';
       gameContainer.style.width = '';
       gameContainer.style.margin = '';
+      if (isMobile && document.body.classList.contains('game-active')) {
+        gameContainer.style.display = 'flex';
+      }
     }
-    document.body.style.overflow = 'auto';
+    document.body.style.overflow = isMobile && document.body.classList.contains('game-active')
+      ? 'hidden'
+      : 'auto';
     return;
   }
 
@@ -669,9 +764,13 @@ function applyViewportFit() {
 socket.on('game-started', (data) => {
   console.log('ゲーム開始受信:', data);
   latestGameState = data;
+  myRoomId = data.roomId;
+  document.body.classList.add('game-active');
   previousFieldCards = [];
   document.getElementById('lobby-container').style.display = 'none';
-  document.getElementById('game-container').style.display = 'block';
+  document.getElementById('game-container').style.display = window.matchMedia('(max-width: 640px)').matches
+    ? 'flex'
+    : 'block';
   document.getElementById('game-finished-modal').style.display = 'none';
 
   document.getElementById('game-room-id').innerText = data.roomId;
@@ -683,7 +782,7 @@ socket.on('game-started', (data) => {
   pendingExchangeSelection = null;
 
   if (data.status === 'waiting-exchange') {
-    const requiredCount = data.exchangeRequirements?.[myId || socket.id] || 0;
+    const requiredCount = data.exchangeRequirements?.[socket.id] || 0;
     if (requiredCount > 0) {
       pendingExchangeSelection = { required: requiredCount, selected: new Set() };
     }
@@ -713,7 +812,7 @@ socket.on('state-updated', (data) => {
   latestGameState = data;
   clearSelectionState();
   if (data.status === 'waiting-exchange') {
-    const requiredCount = data.exchangeRequirements?.[myId || socket.id] || 0;
+    const requiredCount = data.exchangeRequirements?.[socket.id] || 0;
     if (requiredCount > 0 && (!pendingExchangeSelection || pendingExchangeSelection.required !== requiredCount)) {
       pendingExchangeSelection = { required: requiredCount, selected: new Set() };
     }
@@ -868,11 +967,15 @@ function updateUI(data) {
   const seatCardHeight = 88;
 
   if (tableStage) {
-    tableStage.style.height = '';
-    const baseHeight = tableStage.clientHeight || 360;
-    const fieldHeight = fieldSection?.offsetHeight || 120;
-    const neededHeight = fieldHeight + 2 * (seatCardHeight + TABLE_SEAT_GAP);
-    tableStage.style.height = `${Math.max(baseHeight, neededHeight)}px`;
+    if (window.matchMedia('(max-width: 640px)').matches) {
+      tableStage.style.height = '';
+    } else {
+      tableStage.style.height = '';
+      const baseHeight = tableStage.clientHeight || 360;
+      const fieldHeight = fieldSection?.offsetHeight || 120;
+      const neededHeight = fieldHeight + 2 * (seatCardHeight + TABLE_SEAT_GAP);
+      tableStage.style.height = `${Math.max(baseHeight, neededHeight)}px`;
+    }
   }
 
   const stageWidth = tableStage?.clientWidth || 760;
@@ -1302,7 +1405,7 @@ function updatePlayButton() {
     const required = pendingExchangeSelection.required;
     playBtn.innerText = `交換確定 (${count}/${required}枚)`;
     playBtn.disabled = count !== required;
-    passBtn.style.display = 'none';
+    passBtn.style.visibility = 'hidden';
     return;
   }
 
@@ -1318,7 +1421,7 @@ function updatePlayButton() {
         ? `渡すカード確定 (${passCount}/${passNeeded})`
         : `捨てカード確定 (${discardCount}/${discardNeeded})`;
     playBtn.disabled = !totalOk;
-    passBtn.style.display = 'none';
+    passBtn.style.visibility = 'hidden';
     return;
   }
 
@@ -1344,15 +1447,15 @@ function updatePlayButton() {
   }
 
   if (count > 0) {
-    passBtn.style.display = 'none';
+    passBtn.style.visibility = 'hidden';
     return;
   }
 
   if (!latestGameState || !isMyTurn || isHandSelection) {
-    passBtn.style.display = 'none';
+    passBtn.style.visibility = 'hidden';
     passBtn.disabled = true;
   } else {
-    passBtn.style.display = 'inline-block';
+    passBtn.style.visibility = 'visible';
     passBtn.disabled = false;
   }
 }
@@ -1591,10 +1694,12 @@ function showGameFinished(data) {
     const rankTitle = p.rank ? `${p.rank}位` : `${idx + 1}位`;
     const roundPoints = ROLE_POINTS[p.role] ?? 0;
     const roundPointsLabel = roundPoints > 0 ? `+${roundPoints}` : String(roundPoints);
+    const isMe = p.id === currentSocketId;
     return `
-      <div class="ranking-item">
-        <span><strong>${rankTitle}:</strong> ${escapeHtml(p.name)}</span>
-        <span class="ranking-result-meta"><span>${roundPointsLabel} pt</span>${getRoleBadge(p.role)}</span>
+      <div class="ranking-item rank-${p.rank || idx + 1}${isMe ? ' is-me' : ''}">
+        <span class="ranking-place">${rankTitle}</span>
+        <span class="ranking-player"><strong>${escapeHtml(p.name)}</strong>${getRoleBadge(p.role)}</span>
+        <span class="ranking-result-meta"><strong>${roundPointsLabel}</strong><small>pt</small></span>
       </div>
     `;
   }).join('');
