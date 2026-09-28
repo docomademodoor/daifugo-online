@@ -26,6 +26,8 @@ describe('RoomManager flow', () => {
 
     expect(joined.success).toBe(true);
     expect(roomManager.rooms['flow-room'].players.length).toBe(2);
+    expect(roomManager.rooms['flow-room'].gameType).toBe('daifugo');
+    expect(roomManager.rooms['flow-room'].maxPlayers).toBe(8);
 
     const started = roomManager.startGame('host-socket', 'flow-room');
     expect(started.success).toBe(true);

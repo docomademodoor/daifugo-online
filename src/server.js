@@ -178,9 +178,15 @@ io.on('connection', (socket) => {
   console.log('ユーザー接続:', socket.id);
 
   // ルーム新規作成
-  socket.on('create-room', ({ roomId, playerName, playerId, rules }) => {
+  socket.on('create-room', ({ roomId, playerName, playerId, rules, gameType }) => {
     socket.data.playerId = playerId || socket.id;
-    const result = roomManager.createRoom(socket, { roomId, playerName, playerId: socket.data.playerId, rules });
+    const result = roomManager.createRoom(socket, {
+      roomId,
+      playerName,
+      playerId: socket.data.playerId,
+      rules,
+      gameType
+    });
     if (!result.success) {
       socket.emit('error', result.message);
       return;

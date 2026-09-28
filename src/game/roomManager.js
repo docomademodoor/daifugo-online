@@ -1,6 +1,7 @@
 const { createDeck } = require('../utils/deck');
 const { isValidPlay, checkForbiddenFinish, countEffectiveRank } = require('./rules');
 const { applyCardEffects, checkMiyakoOchi } = require('./cardEffects');
+const gameRegistry = require('./gameRegistry');
 const {
   createCpuPlayer,
   createHumanPlayer,
@@ -24,7 +25,7 @@ class RoomManager {
     this.rooms = {};
   }
 
-  createRoom(socket, { roomId, playerName, playerId, rules }) {
+  createRoom(socket, { roomId, playerName, playerId, rules, gameType = 'daifugo' }) {
     if (!roomId || !roomId.trim()) {
       return { success: false, message: '合言葉（ルームID）を入力してください' };
     }
@@ -34,6 +35,9 @@ class RoomManager {
       return { success: false, message: 'その合言葉は既に使用されています。別の合言葉を指定してください。' };
     }
 
+    const game = gameRegistry.get(gameType);
+    if (!game) return { success: false, message: '指定されたゲームは利用できません。' };
+
     const hostPlayer = createHumanPlayer({
       id: socket.id,
       playerId: playerId || socket.id,
@@ -42,6 +46,8 @@ class RoomManager {
     const newRoom = createRoomState({
       id: trimmedId,
       hostId: socket.id,
+      gameType: game.id,
+      maxPlayers: game.maxPlayers,
       rules: {
         eightCut: rules?.eightCut ?? true,
         revolution: rules?.revolution ?? true,
@@ -115,7 +121,7 @@ class RoomManager {
 
     this.resetSeriesForRosterChange(room);
 
-    if (room.players.length >= 8) {
+    if (room.players.length >= room.maxPlayers) {
       let cpuIndex = -1;
       for (let index = room.players.length - 1; index >= 0; index--) {
         if (room.players[index].isCpu) {
@@ -124,23 +130,16 @@ class RoomManager {
         }
       }
       if (cpuIndex === -1) {
-        return { success: false, message: '部屋が満員です（最大8人まで参加可能）' };
+        return { success: false, message: `部屋が満員です（最大${room.maxPlayers}人まで参加可能）` };
       }
       room.players.splice(cpuIndex, 1);
     }
 
-    const newPlayer = {
+    const newPlayer = createHumanPlayer({
       id: socket.id,
       playerId: playerId || socket.id,
-      name: (playerName && playerName.trim()) || `プレイヤー${room.players.length + 1}`,
-      hand: [],
-      isWinner: false,
-      rank: null,
-      role: null,
-      connected: true,
-      isCpu: false,
-      totalPoints: 0
-    };
+      name: (playerName && playerName.trim()) || `プレイヤー${room.players.length + 1}`
+    });
     room.players.push(newPlayer);
 
     return { success: true, room, playerId: newPlayer.playerId };
@@ -153,7 +152,7 @@ class RoomManager {
       return { success: false, message: 'このルームは途中参加の受付状態ではありません。' };
     }
     if (room.isLocked) return { success: false, message: 'このルームはロックされています。' };
-    if (room.players.length >= 8) return { success: false, message: 'ルームが満員です。' };
+    if (room.players.length >= room.maxPlayers) return { success: false, message: 'ルームが満員です。' };
 
     const stablePlayerId = playerId || socket.id;
     const existingRequest = Object.values(room.joinRequests || {})
@@ -175,7 +174,7 @@ class RoomManager {
     if (room.hostId !== socketId) return { success: false, message: 'ホストのみ許可できます。' };
     const request = room.joinRequests?.[requestId];
     if (!request) return { success: false, message: '参加申請が見つかりません。' };
-    if (room.players.length >= 8) return { success: false, message: 'ルームが満員です。' };
+    if (room.players.length >= room.maxPlayers) return { success: false, message: 'ルームが満員です。' };
 
     const player = {
       ...createHumanPlayer({
@@ -209,7 +208,7 @@ class RoomManager {
     if (room.status !== 'waiting' && room.status !== 'finished') {
       return { success: false, message: 'ゲーム中はCPUを変更できません' };
     }
-    if (room.players.length >= 8) return { success: false, message: '参加人数は最大8人です' };
+    if (room.players.length >= room.maxPlayers) return { success: false, message: `参加人数は最大${room.maxPlayers}人です` };
 
     this.resetSeriesForRosterChange(room);
 
@@ -811,6 +810,8 @@ class RoomManager {
     return {
       roomId: room.id,
       hostId: room.hostId,
+      gameType: room.gameType,
+      maxPlayers: room.maxPlayers,
       status: room.status,
       fieldCards: room.fieldCards,
       turnPlayerId: room.players[room.turnIndex]?.id,

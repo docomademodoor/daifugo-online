@@ -28,10 +28,12 @@ function createCpuPlayer({ id, name, difficulty = 'normal' }) {
   };
 }
 
-function createRoomState({ id, hostId, rules, hostPlayer, initialState = {} }) {
+function createRoomState({ id, hostId, gameType, maxPlayers, rules, hostPlayer, initialState = {} }) {
   return {
     id,
     hostId,
+    gameType,
+    maxPlayers,
     rules,
     players: [hostPlayer],
     status: ROOM_STATUS.WAITING,

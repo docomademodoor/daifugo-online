@@ -363,6 +363,7 @@ function createRoom() {
   clearError();
   const name = document.getElementById('create-player-name').value.trim();
   const roomId = document.getElementById('create-room-id').value.trim();
+  const gameType = document.getElementById('game-type-select')?.value || 'daifugo';
 
   if (!name) {
     showError('プレイヤー名を入力してください');
@@ -399,8 +400,8 @@ function createRoom() {
   }
 
   myRoomId = roomId;
-  console.log('ルーム作成リクエスト送信:', { roomId, playerName: name, playerId: myPlayerId, rules });
-  socket.emit('create-room', { roomId, playerName: name, playerId: myPlayerId, rules });
+  console.log('ルーム作成リクエスト送信:', { roomId, playerName: name, playerId: myPlayerId, gameType, rules });
+  socket.emit('create-room', { roomId, playerName: name, playerId: myPlayerId, gameType, rules });
 }
 
 // ルーム参加
@@ -575,6 +576,7 @@ function updateWaitingRoom(room) {
   myRoomId = room.roomId;
   document.getElementById('display-room-id').innerText = room.roomId;
   document.getElementById('player-count').innerText = room.players.length;
+  document.getElementById('room-max-players').innerText = room.maxPlayers || 8;
   const cpuCount = room.players.filter(player => player.isCpu).length;
   document.getElementById('cpu-count').innerText = cpuCount;
 

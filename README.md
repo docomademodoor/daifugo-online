@@ -61,12 +61,15 @@ npm test -- --run
 ## 構成
 
 - `src/core/roomState.js`: ルーム状態、プレイヤー形状、再接続、参加申請など、ゲームに依存しないルーム基盤
+- `src/core/gameRegistry.js`: ゲーム種別と最大人数を解決する共通Registry
+- `src/game/gameRegistry.js`: 現在利用できるゲーム定義の登録場所
 - `src/game/roomManager.js`: 大富豪のカード配布、役職、交換、勝敗、得点などゲーム固有の進行
 - `src/game/rules.js`: カードの組み合わせと出せるかどうかの判定
 - `src/game/cpuPlayer.js`: 大富豪用CPUの手選択
 - `src/server.js`: Socket.IOイベント、通知、タイマーの接続
 
 別のルームゲームを追加する場合は、`src/core/roomState.js` のプレイヤー・接続・申請状態を再利用し、ゲーム固有の状態と進行判定を別の `src/game/` 実装に分けます。
+ゲームの識別子、表示名、最大人数は `src/game/gameRegistry.js` に登録します。例えばチンチロなら `id: 'chinchiro'`、`maxPlayers: 10` を追加し、専用のルール・進行・画面イベントをそのゲームに接続します。
 
 ## ルール構成
 

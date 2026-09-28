@@ -34,6 +34,13 @@
           <input type="text" id="create-room-id" placeholder="例: daifugo-room" value="00000">
         </div>
 
+        <div class="input-group">
+          <label for="game-type-select">ゲーム</label>
+          <select id="game-type-select">
+            <option value="daifugo">大富豪</option>
+          </select>
+        </div>
+
         <div class="rules-section">
           <h3>採用するルール設定</h3>
           <p class="rules-always-on">常時適用: 革命 / マーク縛り / スペ3返し / 禁止上がり / 都落ち / ♢3スタート / ジョーカー</p>
@@ -98,7 +105,7 @@
       </div>
 
       <div class="players-card">
-        <h3>参加プレイヤー (<span id="player-count">0</span>/8人、CPU <span id="cpu-count">0</span>人)</h3>
+        <h3>参加プレイヤー (<span id="player-count">0</span>/<span id="room-max-players">0</span>人、CPU <span id="cpu-count">0</span>人)</h3>
         <div id="players-list" class="players-list"></div>
       </div>
 
