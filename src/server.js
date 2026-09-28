@@ -4,6 +4,7 @@ const { Server } = require('socket.io');
 const path = require('path');
 const roomManager = require('./game/roomManager');
 const { chooseCpuAction, chooseCpuExchangeCards } = require('./game/cpuPlayer');
+const { isValidPlay } = require('./game/rules');
 
 const app = express();
 const server = http.createServer(app);
@@ -283,13 +284,63 @@ io.on('connection', (socket) => {
     submitCpuExchangeSelections(roomId);
   });
 
-  socket.on('pause-turn-timer', (roomId) => {
+  socket.on('pause-turn-timer', ({ roomId, cards }) => {
     const room = roomManager.rooms[roomId];
     const currentPlayer = room?.players[room.turnIndex];
     if (!room || room.status !== 'playing' || currentPlayer?.id !== socket.id || currentPlayer.isCpu) return;
 
+    const selectedIds = Array.isArray(cards) ? cards : [];
+    if (selectedIds.length === 0 || selectedIds.some(id => typeof id !== 'string')
+      || new Set(selectedIds).size !== selectedIds.length) {
+      socket.emit('error', '捨て渡しするカードを確認できませんでした。');
+      return;
+    }
+
+    const cardsById = new Map(currentPlayer.hand.map(card => [card.id, card]));
+    const playedCards = selectedIds.map(id => cardsById.get(id));
+    if (playedCards.some(card => !card)) {
+      socket.emit('error', '選択したカードが手札にありません。');
+      return;
+    }
+    if (currentPlayer.hand.some(card => card.id === '♦3') && !playedCards.some(card => card.id === '♦3')) {
+      socket.emit('error', '♦3を含むカードを選んでください。');
+      return;
+    }
+
+    const validation = isValidPlay(playedCards, room.fieldCards, room.rules, {
+      isRevolution: room.isRevolution,
+      isElevenBack: room.isElevenBack,
+      lockedSuit: room.lockedSuit,
+      lockedNumber: room.lockedNumber
+    });
+    if (!validation.valid) {
+      socket.emit('error', validation.message);
+      return;
+    }
+
+    const requirements = roomManager.getSideSelectionRequirements(room, currentPlayer, playedCards);
+    if (requirements.pass + requirements.discard === 0) {
+      socket.emit('error', '追加で選ぶカードが必要なプレイではありません。');
+      return;
+    }
+
+    const sortedIds = [...selectedIds].sort();
+    const pendingSelection = room.pendingSideSelection;
+    if (pendingSelection?.playerId === currentPlayer.id
+      && (pendingSelection.cardIds.length !== sortedIds.length
+        || pendingSelection.cardIds.some((id, index) => id !== sortedIds[index]))) {
+      socket.emit('error', '別のカード選択がすでに進行中です。');
+      return;
+    }
+
+    room.pendingSideSelection = {
+      playerId: currentPlayer.id,
+      cardIds: sortedIds,
+      requirements
+    };
+
     clearHumanTurnTimer(roomId);
-    socket.emit('turn-timer-paused', { roomId });
+    io.to(roomId).emit('turn-timer-paused', { roomId, playerId: currentPlayer.id });
   });
 
   // カードを出す (複数枚出し・ペア・革命対応)
@@ -342,6 +393,10 @@ io.on('connection', (socket) => {
     const playerId = socket.data.playerId || null;
     const updatedRoom = roomManager.leaveRoom(socket.id, playerId);
     if (updatedRoom) {
+      if (updatedRoom.pendingSideSelection?.playerId === socket.id) {
+        updatedRoom.pendingSideSelection = null;
+        scheduleHumanTurnTimer(updatedRoom.id);
+      }
       const publicState = roomManager.getPublicState(updatedRoom);
       io.to(updatedRoom.id).emit('room-updated', publicState);
       io.to(updatedRoom.id).emit('state-updated', publicState);

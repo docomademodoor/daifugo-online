@@ -2,6 +2,19 @@
  * 特殊カード役および効果の適用ハンドラー
  */
 
+const { countEffectiveRank, isStraightSequence, isUnbeatablePlay } = require('./rules');
+const RANK_VALUES = { '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, J: 11, Q: 12, K: 13, A: 14, '2': 15 };
+
+function getUniformRank(cards) {
+  if (!cards.length || cards.some(card => card.id === 'JOKER')) return null;
+  const ranks = cards.map(card => RANK_VALUES[String(card.num)]);
+  return ranks.every(rank => rank !== undefined && rank === ranks[0]) ? ranks[0] : null;
+}
+
+function getRankLabel(value) {
+  return ({ 11: 'J', 12: 'Q', 13: 'K', 14: 'A', 15: '2' })[value] || String(value);
+}
+
 /**
  * カードプレイ時の特殊効果を判定して適用する
  * @param {Object} room - ルームオブジェクト
@@ -40,24 +53,28 @@ function applyCardEffects(room, currentPlayer, playedCards, validation, selectio
     return { clearField, skipCount, actionLogs };
   }
 
+  // 通常時の最強手（2の複数枚出し、同一スートのJQK階段）は場を流す。
+  if (isUnbeatablePlay(playedCards, room.rules, {
+    isRevolution: room.isRevolution,
+    isElevenBack: room.isElevenBack,
+    lockedSuit: room.lockedSuit,
+    lockedNumber: room.lockedNumber
+  })) {
+    clearField = true;
+    actionLogs.push(`【最強手！】${currentPlayer.name} が場を流しました！`);
+    return { clearField, skipCount, actionLogs };
+  }
+
   // 3-2. 階段革命判定 (一般的なローカルルール: 同じマークの連番4枚以上で革命)
   if (room.rules.staircaseRevolution && room.rules.staircase && playedCards.length >= 4) {
     const nonJokers = playedCards.filter(c => c.id !== 'JOKER');
-    if (nonJokers.length >= 4) {
-      const suit = nonJokers[0].suit;
-      const values = nonJokers.map(c => Number(c.num) || { J: 11, Q: 12, K: 13, A: 14, 2: 15 }[c.num]).sort((a, b) => a - b);
-      const isSameSuit = nonJokers.every(c => c.suit === suit);
-      const isUnique = new Set(values).size === values.length;
-      const isStraight = values.every((n, idx, arr) => idx === 0 || arr[idx - 1] + 1 === n);
-
-      if (isSameSuit && isUnique && isStraight) {
-        room.isRevolution = !room.isRevolution;
-        actionLogs.push(
-          room.isRevolution
-            ? '【階段革命！】カードの強さが反転しました。'
-            : '【階段革命解除！】通常の強さに戻りました。'
-        );
-      }
+    if (nonJokers.length >= 2 && isStraightSequence(playedCards)) {
+      room.isRevolution = !room.isRevolution;
+      actionLogs.push(
+        room.isRevolution
+          ? '【階段革命！】カードの強さが反転しました。'
+          : '【階段革命解除！】通常の強さに戻りました。'
+      );
     }
   }
 
@@ -82,13 +99,14 @@ function applyCardEffects(room, currentPlayer, playedCards, validation, selectio
   }
 
   // 6. 10捨て (10を出した枚数分だけ、手札から不要なカードを破棄)
-  if (room.rules.tenDiscard && playedCards.some(c => c.num === 10)) {
+  const tenCount = countEffectiveRank(playedCards, 10);
+  if (room.rules.tenDiscard && tenCount > 0) {
     if (Array.isArray(selections.discardedCards)) {
       selections.discardedCards.forEach(discarded => {
         actionLogs.push(`【10捨て！】${currentPlayer.name} は ${discarded.suit}${discarded.num} を捨てました。`);
       });
     } else {
-      const discardCount = playedCards.filter(c => c.num === 10).length;
+      const discardCount = tenCount;
       for (let i = 0; i < discardCount && currentPlayer.hand.length > 0; i++) {
         const discarded = currentPlayer.hand.shift();
         actionLogs.push(`【10捨て！】手札から ${discarded.suit}${discarded.num} を捨てました！`);
@@ -115,19 +133,19 @@ function applyCardEffects(room, currentPlayer, playedCards, validation, selectio
     }
   }
 
-  // 8. 連番縛り判定 (同じマークの連番を出したら、その連番の範囲を含むカードで出させる)
-  if (room.rules.numberLock && playedCards.length > 0) {
-    const nonJokers = playedCards.filter(c => c.id !== 'JOKER');
-    if (nonJokers.length >= 3) {
-      const valueMap = { '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, J: 11, Q: 12, K: 13, A: 14, '2': 15 };
-      const values = nonJokers.map(c => valueMap[String(c.num)] ?? Number(c.num)).sort((a, b) => a - b);
-      const isSameSuit = nonJokers.every(c => c.suit === nonJokers[0].suit);
-      const isUnique = new Set(values).size === values.length;
-      const isConsecutive = values.every((n, idx, arr) => idx === 0 || arr[idx - 1] + 1 === n);
+  // 8. 数字縛り (同じ枚数の同ランク出しが1つずつ続いたら、次のランクを要求)
+  if (room.rules.numberLock && room.fieldCards.length === playedCards.length) {
+    const previousRank = getUniformRank(room.fieldCards);
+    const playedRank = getUniformRank(playedCards);
+    const startsLock = !room.lockedNumber && room.passCount === 0 &&
+      previousRank !== null && playedRank === previousRank + 1;
+    const continuesLock = room.lockedNumber && getRankLabel(playedRank) === String(room.lockedNumber);
 
-      if (isSameSuit && isUnique && isConsecutive) {
-        room.lockedNumber = values;
-        actionLogs.push(`【連番縛り発動！】以降 [${values.join('→')}] を含むカードで出してください`);
+    if (startsLock || continuesLock) {
+      const nextRank = playedRank < 15 ? getRankLabel(playedRank + 1) : null;
+      room.lockedNumber = nextRank;
+      if (nextRank) {
+        actionLogs.push(`【数字縛り！】次は [${nextRank}] のカードで出してください`);
       }
     }
   }

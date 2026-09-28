@@ -35,6 +35,58 @@ describe('RoomManager flow', () => {
       .toBe(roomManager.rooms['flow-room'].players[roomManager.rooms['flow-room'].turnIndex].id);
   });
 
+  it('カード交換がある次ラウンドは交換後も大貧民から先に始める', () => {
+    roomManager.rooms = {};
+    roomManager.createRoom({ id: 'host' }, { roomId: 'exchange-starter', playerName: 'A', playerId: 'a', rules: {} });
+    roomManager.joinRoom({ id: 'b' }, { roomId: 'exchange-starter', playerName: 'B', playerId: 'b' });
+    roomManager.joinRoom({ id: 'c' }, { roomId: 'exchange-starter', playerName: 'C', playerId: 'c' });
+    roomManager.joinRoom({ id: 'd' }, { roomId: 'exchange-starter', playerName: 'D', playerId: 'd' });
+    const room = roomManager.rooms['exchange-starter'];
+    room.players[0].role = '大富豪';
+    room.players[1].role = '富豪';
+    room.players[2].role = '貧民';
+    room.players[3].role = '大貧民';
+    room.previousRoles = Object.fromEntries(room.players.map(player => [player.id, player.role]));
+
+    const originalRandom = Math.random;
+    Math.random = () => 0;
+    let result;
+    try {
+      result = roomManager.startGame('host', 'exchange-starter');
+    } finally {
+      Math.random = originalRandom;
+    }
+
+    expect(result.room.status).toBe('waiting-exchange');
+    expect(result.room.players[result.room.turnIndex].role).toBe('大貧民');
+  });
+
+  it('3人戦の富豪・平民・貧民ではカード交換せず貧民から次ラウンドを始める', () => {
+    roomManager.rooms = {};
+    roomManager.createRoom({ id: 'a' }, { roomId: 'three-role-round', playerName: 'A', playerId: 'a', rules: {} });
+    roomManager.joinRoom({ id: 'b' }, { roomId: 'three-role-round', playerName: 'B', playerId: 'b' });
+    roomManager.joinRoom({ id: 'c' }, { roomId: 'three-role-round', playerName: 'C', playerId: 'c' });
+    const room = roomManager.rooms['three-role-round'];
+    room.players[0].role = '富豪';
+    room.players[1].role = '平民';
+    room.players[2].role = '貧民';
+    room.previousRoles = Object.fromEntries(room.players.map(player => [player.id, player.role]));
+
+    expect(roomManager.buildExchangePlan(room)).toEqual([]);
+
+    const originalRandom = Math.random;
+    Math.random = () => 0;
+    let started;
+    try {
+      started = roomManager.startGame('a', 'three-role-round');
+    } finally {
+      Math.random = originalRandom;
+    }
+
+    expect(started.room.status).toBe('playing');
+    expect(started.room.players[started.room.turnIndex].role).toBe('貧民');
+  });
+
   it('全員がパスしたら場を流して最後に出した人のターンへ戻る', () => {
     roomManager.rooms = {};
 
@@ -197,6 +249,82 @@ describe('Card effects', () => {
 
     expect(result.clearField).toBe(true);
     expect(result.actionLogs.join(' ')).toContain('8切り');
+  });
+
+  it('通常時の2のペアは8切りと同じく場を流せる', () => {
+    const room = {
+      rules: { eightCut: false, revolution: false, staircaseRevolution: false, suitLock: false, numberLock: false, elevenBack: false, fiveSkip: false, tenDiscard: false, sevenPass: false },
+      fieldCards: [{ id: 'h5', suit: '♥', num: 5, strength: 5 }, { id: 's5', suit: '♠', num: 5, strength: 5 }],
+      isRevolution: false,
+      isElevenBack: false,
+      lockedSuit: null,
+      lockedNumber: null,
+      winners: []
+    };
+    const result = applyCardEffects(room, { name: 'A', hand: [] }, [
+      { id: 'h2', suit: '♥', num: 2, strength: 15 },
+      { id: 's2', suit: '♠', num: 2, strength: 15 }
+    ], { valid: true });
+
+    expect(result.clearField).toBe(true);
+    expect(result.actionLogs.join(' ')).toContain('最強手');
+  });
+
+  it('JQK階段はQKAで返せるため最強手ではない', () => {
+    const room = {
+      rules: { eightCut: false, revolution: false, staircase: true, staircaseRevolution: false, suitLock: false, numberLock: false, elevenBack: false, fiveSkip: false, tenDiscard: false, sevenPass: false },
+      fieldCards: [{ id: 'h5', suit: '♥', num: 5, strength: 5 }, { id: 'h6', suit: '♥', num: 6, strength: 6 }, { id: 'h7', suit: '♥', num: 7, strength: 7 }],
+      isRevolution: false,
+      isElevenBack: false,
+      lockedSuit: null,
+      lockedNumber: null,
+      winners: []
+    };
+    const result = applyCardEffects(room, { name: 'A', hand: [] }, [
+      { id: 'hJ', suit: '♥', num: 'J', strength: 11 },
+      { id: 'hQ', suit: '♥', num: 'Q', strength: 12 },
+      { id: 'hK', suit: '♥', num: 'K', strength: 13 }
+    ], { valid: true });
+
+    expect(result.clearField).toBe(false);
+  });
+
+  it('K-A-2階段はより強い階段がないため場を流す', () => {
+    const room = {
+      rules: { eightCut: false, revolution: false, staircase: true, staircaseRevolution: false, suitLock: false, numberLock: false, elevenBack: false, fiveSkip: false, tenDiscard: false, sevenPass: false },
+      fieldCards: [{ id: 'h5', suit: '♥', num: 5, strength: 5 }, { id: 'h6', suit: '♥', num: 6, strength: 6 }, { id: 'h7', suit: '♥', num: 7, strength: 7 }],
+      isRevolution: false,
+      isElevenBack: false,
+      lockedSuit: null,
+      lockedNumber: null,
+      winners: []
+    };
+    const result = applyCardEffects(room, { name: 'A', hand: [] }, [
+      { id: 'hK', suit: '♥', num: 'K', strength: 11 },
+      { id: 'hA', suit: '♥', num: 'A', strength: 12 },
+      { id: 'h2', suit: '♥', num: 2, strength: 13 }
+    ], { valid: true });
+
+    expect(result.clearField).toBe(true);
+    expect(result.actionLogs.join(' ')).toContain('最強手');
+  });
+
+  it('革命中の2のペアは最強手として場を流さない', () => {
+    const room = {
+      rules: { eightCut: false, revolution: true, staircaseRevolution: false, suitLock: false, numberLock: false, elevenBack: false, fiveSkip: false, tenDiscard: false, sevenPass: false },
+      fieldCards: [{ id: 'h5', suit: '♥', num: 5, strength: 5 }, { id: 's5', suit: '♠', num: 5, strength: 5 }],
+      isRevolution: true,
+      isElevenBack: false,
+      lockedSuit: null,
+      lockedNumber: null,
+      winners: []
+    };
+    const result = applyCardEffects(room, { name: 'A', hand: [] }, [
+      { id: 'h2', suit: '♥', num: 2, strength: 15 },
+      { id: 's2', suit: '♠', num: 2, strength: 15 }
+    ], { valid: true });
+
+    expect(result.clearField).toBe(false);
   });
 
   it('5飛びでスキップ数が増える', () => {

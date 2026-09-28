@@ -54,6 +54,35 @@ describe('勝敗・役割判定', () => {
     expect(room.players[3].role).toBe('大貧民');
   });
 
+  it('2〜6人それぞれに指定の順位役職を割り当てる', () => {
+    const expectedRoles = {
+      2: ['富豪', '貧民'],
+      3: ['富豪', '平民', '貧民'],
+      4: ['大富豪', '富豪', '貧民', '大貧民'],
+      5: ['大富豪', '富豪', '平民', '貧民', '大貧民'],
+      6: ['大富豪', '富豪', '平民', '平民', '貧民', '大貧民']
+    };
+
+    Object.entries(expectedRoles).forEach(([countText, roles]) => {
+      const count = Number(countText);
+      const room = {
+        players: roles.map((_, index) => ({
+          id: `p${index + 1}`,
+          name: `P${index + 1}`,
+          hand: [],
+          rank: index + 1,
+          role: null
+        })),
+        winners: [],
+        previousRoles: {}
+      };
+
+      roomManager.assignRoles(room);
+
+      expect(room.players.map(player => player.role), `${count}人戦`).toEqual(roles);
+    });
+  });
+
   it('5人戦の順位に応じて5種類の役割を割り当てる', () => {
     const room = {
       players: [

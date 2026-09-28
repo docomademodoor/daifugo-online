@@ -4,6 +4,210 @@ import { applyCardEffects } from '../src/game/cardEffects.js';
 import { checkForbiddenFinish } from '../public/js/rules.js';
 
 describe('特殊効果テスト', () => {
+  it('スートが異なる連続ランクの連続プレイで次の数字を縛る', () => {
+    const room = {
+      rules: { numberLock: true },
+      fieldCards: [{ id: 'previous', suit: '♥', num: 6 }],
+      passCount: 0
+    };
+    const player = { name: 'A', id: 'p1', hand: [] };
+
+    applyCardEffects(room, player, [{ id: 'current', suit: '♠', num: 7 }], {});
+
+    expect(room.lockedNumber).toBe('8');
+  });
+
+  it('同じ枚数のペアが連続した場合も次の数字を縛る', () => {
+    const room = {
+      rules: { numberLock: true },
+      fieldCards: [
+        { id: 'previous-1', suit: '♥', num: 6 },
+        { id: 'previous-2', suit: '♦', num: 6 }
+      ],
+      passCount: 0
+    };
+    const player = { name: 'A', id: 'p1', hand: [] };
+
+    applyCardEffects(room, player, [
+      { id: 'current-1', suit: '♠', num: 7 },
+      { id: 'current-2', suit: '♣', num: 7 }
+    ], {});
+
+    expect(room.lockedNumber).toBe('8');
+  });
+
+  it('階段を出しただけでは数字縛りにならない', () => {
+    const room = { rules: { numberLock: true }, fieldCards: [], passCount: 0 };
+    const player = { name: 'A', id: 'p1', hand: [] };
+
+    applyCardEffects(room, player, [
+      { id: 'stair-1', suit: '♥', num: 6 },
+      { id: 'stair-2', suit: '♥', num: 7 },
+      { id: 'stair-3', suit: '♥', num: 8 }
+    ], {});
+
+    expect(room.lockedNumber).toBeUndefined();
+  });
+
+  it('追加選択の必要枚数を手札の残りと効果カード数から算出する', () => {
+    const room = { rules: { sevenPass: true, tenDiscard: true } };
+    const player = { hand: [
+      { id: 'seven', num: 7 },
+      { id: 'ten', num: 10 },
+      { id: 'pass-card', num: 4 },
+      { id: 'discard-card', num: 6 }
+    ] };
+
+    expect(roomManager.getSideSelectionRequirements(room, player, [player.hand[0], player.hand[1]]))
+      .toEqual({ pass: 1, discard: 1 });
+    expect(roomManager.getSideSelectionRequirements(room, player, [{ id: 'plain', num: 9 }]))
+      .toEqual({ pass: 0, discard: 0 });
+  });
+
+  it('7の4枚とジョーカーは7渡しを5枚分として扱う', () => {
+    const room = { rules: { sevenPass: true, tenDiscard: true } };
+    const player = { hand: [
+      { id: 'seven-1', num: 7 },
+      { id: 'seven-2', num: 7 },
+      { id: 'seven-3', num: 7 },
+      { id: 'seven-4', num: 7 },
+      { id: 'joker', num: 'JOKER', id: 'JOKER' },
+      { id: 'pass-1', num: 4 },
+      { id: 'pass-2', num: 5 },
+      { id: 'pass-3', num: 6 },
+      { id: 'pass-4', num: 8 },
+      { id: 'pass-5', num: 9 },
+      { id: 'pass-6', num: 10 }
+    ] };
+
+    expect(roomManager.getSideSelectionRequirements(room, player, player.hand.slice(0, 5)))
+      .toEqual({ pass: 5, discard: 0 });
+  });
+
+  it('10の4枚とジョーカーは10捨てを5枚分として扱う', () => {
+    const room = { rules: { sevenPass: true, tenDiscard: true } };
+    const player = { hand: [
+      { id: 'ten-1', num: 10 },
+      { id: 'ten-2', num: 10 },
+      { id: 'ten-3', num: 10 },
+      { id: 'ten-4', num: 10 },
+      { id: 'JOKER', num: 'JOKER' },
+      { id: 'discard-1', num: 4 },
+      { id: 'discard-2', num: 5 },
+      { id: 'discard-3', num: 6 },
+      { id: 'discard-4', num: 7 },
+      { id: 'discard-5', num: 8 },
+      { id: 'discard-6', num: 9 }
+    ] };
+
+    expect(roomManager.getSideSelectionRequirements(room, player, player.hand.slice(0, 5)))
+      .toEqual({ pass: 0, discard: 5 });
+  });
+
+  it('プレイ要求のカード属性をクライアントが改ざんできない', () => {
+    roomManager.rooms = {};
+    roomManager.createRoom({ id: 'host' }, { roomId: 'canonical-play', playerName: 'A', playerId: 'p1', rules: {} });
+    roomManager.joinRoom({ id: 'guest' }, { roomId: 'canonical-play', playerName: 'B', playerId: 'p2' });
+    const room = roomManager.rooms['canonical-play'];
+    room.status = 'playing';
+    room.turnIndex = 0;
+    room.fieldCards = [{ id: 'top', suit: '♠', num: 9, strength: 7 }];
+    room.players[0].hand = [{ id: 'held-3', suit: '♥', num: 3, strength: 1 }];
+    room.players[1].hand = [{ id: 'other', suit: '♣', num: 4, strength: 2 }];
+
+    const result = roomManager.playCards('host', {
+      roomId: 'canonical-play',
+      cards: [{ id: 'held-3', suit: '♠', num: 2, strength: 15 }]
+    });
+
+    expect(result.success).toBe(false);
+    expect(room.players[0].hand).toEqual([{ id: 'held-3', suit: '♥', num: 3, strength: 1 }]);
+    expect(room.fieldCards).toEqual([{ id: 'top', suit: '♠', num: 9, strength: 7 }]);
+  });
+
+  it('同じカードIDを複数枚指定できない', () => {
+    roomManager.rooms = {};
+    roomManager.createRoom({ id: 'host' }, { roomId: 'duplicate-play', playerName: 'A', playerId: 'p1', rules: {} });
+    roomManager.joinRoom({ id: 'guest' }, { roomId: 'duplicate-play', playerName: 'B', playerId: 'p2' });
+    const room = roomManager.rooms['duplicate-play'];
+    room.status = 'playing';
+    room.turnIndex = 0;
+    room.fieldCards = [];
+    const heldCard = { id: 'held-5', suit: '♠', num: 5, strength: 3 };
+    room.players[0].hand = [heldCard];
+
+    const result = roomManager.playCards('host', {
+      roomId: 'duplicate-play',
+      cards: [heldCard, heldCard]
+    });
+
+    expect(result.success).toBe(false);
+    expect(room.players[0].hand).toEqual([heldCard]);
+    expect(room.fieldCards).toEqual([]);
+  });
+
+  it('追加カード選択を一時停止した後は最初に選んだプレイ札を固定する', () => {
+    roomManager.rooms = {};
+    roomManager.createRoom({ id: 'host' }, { roomId: 'pending-side-selection', playerName: 'A', playerId: 'p1', rules: {} });
+    roomManager.joinRoom({ id: 'guest' }, { roomId: 'pending-side-selection', playerName: 'B', playerId: 'p2' });
+    const room = roomManager.rooms['pending-side-selection'];
+    room.status = 'playing';
+    room.turnIndex = 0;
+    room.fieldCards = [];
+    room.players[0].hand = [
+      { id: 'ten', suit: '♥', num: 10, strength: 8 },
+      { id: 'other', suit: '♠', num: 3, strength: 1 },
+      { id: 'discard', suit: '♣', num: 5, strength: 3 }
+    ];
+    room.pendingSideSelection = { playerId: 'host', cardIds: ['ten'], requirements: { pass: 0, discard: 1 } };
+
+    const result = roomManager.playCards('host', {
+      roomId: 'pending-side-selection',
+      cards: ['other'],
+      discardCards: ['discard']
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.message).toContain('最初に選んだカード');
+    expect(room.players[0].hand.map(card => card.id)).toEqual(['ten', 'other', 'discard']);
+  });
+
+  it('カード交換にはサーバー上の正規カードを渡す', () => {
+    roomManager.rooms = {};
+    roomManager.createRoom({ id: 'host' }, { roomId: 'canonical-exchange', playerName: 'A', playerId: 'p1', rules: {} });
+    roomManager.joinRoom({ id: 'guest' }, { roomId: 'canonical-exchange', playerName: 'B', playerId: 'p2' });
+    roomManager.joinRoom({ id: 'hinmin' }, { roomId: 'canonical-exchange', playerName: 'C', playerId: 'p3' });
+    roomManager.joinRoom({ id: 'daihinmin' }, { roomId: 'canonical-exchange', playerName: 'D', playerId: 'p4' });
+    const room = roomManager.rooms['canonical-exchange'];
+    const host = room.players[0];
+    const guest = room.players[3];
+    host.role = '大富豪';
+    room.players[1].role = '富豪';
+    room.players[2].role = '貧民';
+    guest.role = '大貧民';
+    host.hand = [
+      { id: 'card-a', suit: '♥', num: 3, strength: 1 },
+      { id: 'card-b', suit: '♦', num: 4, strength: 2 }
+    ];
+    guest.hand = [];
+    room.status = 'waiting-exchange';
+    room.exchangeRequirements = { host: 2 };
+
+    const result = roomManager.submitExchangeCards('host', {
+      roomId: 'canonical-exchange',
+      cards: [
+        { id: 'card-a', suit: '♠', num: 2, strength: 15 },
+        { id: 'card-b', suit: '♠', num: 2, strength: 15 }
+      ]
+    });
+
+    expect(result.success).toBe(true);
+    expect(guest.hand).toEqual([
+      { id: 'card-a', suit: '♥', num: 3, strength: 1 },
+      { id: 'card-b', suit: '♦', num: 4, strength: 2 }
+    ]);
+  });
+
   it('7渡しで次の人にカードが移る', () => {
     roomManager.rooms = {};
 

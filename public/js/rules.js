@@ -12,9 +12,18 @@
     return map[String(card.num)] ?? null;
   }
 
+  function countEffectiveRank(cards, rank) {
+    const targetValue = getNumericValue({ num: rank });
+    const nonJokers = cards.filter(card => card.id !== 'JOKER');
+    const hasMatchingRank = nonJokers.length > 0 && nonJokers.every(card => getNumericValue(card) === targetValue);
+    return hasMatchingRank ? cards.length : nonJokers.filter(card => getNumericValue(card) === targetValue).length;
+  }
+
   function isStraightSequence(cards) {
     const noJoker = cards.filter(c => c.id !== 'JOKER');
-    if (noJoker.length < 3) return false;
+    const jokerCount = cards.length - noJoker.length;
+    if (noJoker.length < (jokerCount > 0 ? 2 : 3)) return false;
+    if (cards.length > 13) return false;
 
     const suit = noJoker[0].suit;
     if (noJoker.some(c => c.suit !== suit)) return false;
@@ -25,10 +34,92 @@
     const unique = [...new Set(values)];
     if (unique.length !== values.length) return false;
 
-    const span = unique[unique.length - 1] - unique[0];
-    if (span !== unique.length - 1) return false;
+    for (let start = 3; start <= 15 - cards.length + 1; start++) {
+      const end = start + cards.length - 1;
+      if (unique.every(value => value >= start && value <= end)) return true;
+    }
 
-    return true;
+    return false;
+  }
+
+  function getStraightHigh(cards) {
+    const length = cards.length;
+    const values = cards
+      .filter(card => card.id !== 'JOKER')
+      .map(card => getNumericValue(card));
+    let highest = null;
+    for (let start = 3; start <= 15 - length + 1; start++) {
+      const end = start + length - 1;
+      if (values.every(value => value >= start && value <= end)) highest = end;
+    }
+    return highest;
+  }
+
+  function createTheoreticalCard(value, suit, id) {
+    const labels = { 14: 'A', 11: 'J', 12: 'Q', 13: 'K', 15: '2' };
+    return {
+      id,
+      suit,
+      num: labels[value] || value,
+      strength: value - 2
+    };
+  }
+
+  function getStrongerCandidates(playedCards, rules, state) {
+    const candidates = [];
+    const count = playedCards.length;
+    const suits = state.lockedSuit ? [state.lockedSuit] : ['♠', '♥', '♦', '♣'];
+    const includeJoker = rules.includeJoker !== false;
+    const addCandidate = candidate => {
+      if (isValidPlay(candidate, playedCards, rules, state).valid) candidates.push(candidate);
+    };
+
+    const nonJokers = playedCards.filter(card => card.id !== 'JOKER');
+    const isGroup = nonJokers.length > 0 && nonJokers.every(card => card.num === nonJokers[0].num);
+    if (isGroup) {
+      for (let value = 3; value <= 15; value++) {
+        for (const jokerCount of includeJoker ? [0, 1] : [0]) {
+          const regularCount = count - jokerCount;
+          if (regularCount < 1 || regularCount > 4) continue;
+          const candidate = Array.from({ length: regularCount }, (_, index) =>
+            createTheoreticalCard(value, suits[index % suits.length], `theory-${value}-${index}`)
+          );
+          if (jokerCount) candidate.push({ id: 'JOKER', suit: '★', num: 'JOKER', strength: 14 });
+          addCandidate(candidate);
+        }
+      }
+      return candidates;
+    }
+
+    if (rules.staircase && count >= 3) {
+      for (let start = 3; start <= 15 - count + 1; start++) {
+        for (const suit of suits) {
+          addCandidate(Array.from({ length: count }, (_, index) =>
+            createTheoreticalCard(start + index, suit, `theory-${start}-${suit}-${index}`)
+          ));
+
+          if (includeJoker) {
+            for (let missing = 0; missing < count; missing++) {
+              const candidate = [];
+              for (let index = 0; index < count; index++) {
+                if (index === missing) {
+                  candidate.push({ id: 'JOKER', suit: '★', num: 'JOKER', strength: 14 });
+                } else {
+                  candidate.push(createTheoreticalCard(start + index, suit, `theory-${start}-${suit}-${index}`));
+                }
+              }
+              addCandidate(candidate);
+            }
+          }
+        }
+      }
+    }
+
+    return candidates;
+  }
+
+  function isUnbeatablePlay(playedCards, rules = {}, state = {}) {
+    return getStrongerCandidates(playedCards, rules, state).length === 0;
   }
 
   function isValidCombination(cards, rules = {}) {
@@ -107,11 +198,10 @@
     }
 
     if (rules.numberLock && state.lockedNumber) {
-      const lockedNumbers = Array.isArray(state.lockedNumber) ? state.lockedNumber : [state.lockedNumber];
-      const hasLockedNumber = playedCards.some(c => lockedNumbers.some(n => String(c.num) === String(n)));
+      const lockedValue = getNumericValue({ num: state.lockedNumber });
+      const hasLockedNumber = playedCards.every(c => getNumericValue(c) === lockedValue);
       if (!hasLockedNumber) {
-        const lockedLabel = lockedNumbers.join('→');
-        return { valid: false, message: `連番縛り中です！ [${lockedLabel}] を含むカードで出してください。` };
+        return { valid: false, message: `数字縛り中です！ [${state.lockedNumber}] のカードで出してください。` };
       }
     }
 
@@ -134,8 +224,8 @@
     const fieldStrength = getPlayStrength(fieldCards);
 
     if (rules.staircase && isStraightSequence(playedCards) && isStraightSequence(fieldCards)) {
-      const playHigh = Math.max(...playedCards.filter(c => c.id !== 'JOKER').map(c => getNumericValue(c) || 0));
-      const fieldHigh = Math.max(...fieldCards.filter(c => c.id !== 'JOKER').map(c => getNumericValue(c) || 0));
+      const playHigh = getStraightHigh(playedCards);
+      const fieldHigh = getStraightHigh(fieldCards);
       if (isReversed) {
         if (playHigh >= fieldHigh) {
           return { valid: false, message: '階段革命中です！場より弱い階段を出してください。' };
@@ -298,6 +388,9 @@
 
   // エクスポート設定 (Node.js とブラウザ両用)
   exports.isValidCombination = isValidCombination;
+  exports.countEffectiveRank = countEffectiveRank;
+  exports.isStraightSequence = isStraightSequence;
+  exports.isUnbeatablePlay = isUnbeatablePlay;
   exports.getPlayStrength = getPlayStrength;
   exports.isValidPlay = isValidPlay;
   exports.checkForbiddenFinish = checkForbiddenFinish;

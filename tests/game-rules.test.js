@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isValidPlay } from '../public/js/rules.js';
+import { isValidCombination, isValidPlay } from '../public/js/rules.js';
 import RoomManager from '../src/game/roomManager.js';
 
 describe('カードルール判定', () => {
@@ -11,6 +11,17 @@ describe('カードルール判定', () => {
 
     const result = isValidPlay(cards, [], {}, {});
     expect(result.valid).toBe(true);
+  });
+
+  it('ジョーカーを階段の穴埋めに使える', () => {
+    const cards = ['3', '4', '5', 'JOKER', '7', '8', '9', '10'].map((num, index) => ({
+      id: num === 'JOKER' ? 'JOKER' : `s${index}`,
+      suit: num === 'JOKER' ? '' : '♠',
+      num,
+      strength: num === 'JOKER' ? 14 : Number(num)
+    }));
+
+    expect(isValidCombination(cards, { staircase: true }).valid).toBe(true);
   });
 
   it('マーク縛り中は違うマークを出せない', () => {
@@ -34,7 +45,7 @@ describe('カードルール判定', () => {
     expect(invalid.message).toContain('マーク縛り');
   });
 
-  it('連番縛り中は指定した番号を含むカードでないと出せない', () => {
+  it('数字縛り中は指定された数字だけで応じられる', () => {
     const field = [
       { id: 'd2', suit: '♦', num: 2, strength: 2 },
       { id: 'd3', suit: '♦', num: 3, strength: 3 }
@@ -43,16 +54,16 @@ describe('カードルール判定', () => {
     const valid = isValidPlay([
       { id: 'c1', suit: '♣', num: 4, strength: 4 },
       { id: 'c2', suit: '♣', num: 4, strength: 4 }
-    ], field, { numberLock: true }, { lockedNumber: [4, 5] });
+    ], field, { numberLock: true }, { lockedNumber: 4 });
     expect(valid.valid).toBe(true);
 
     const invalid = isValidPlay([
       { id: 's1', suit: '♠', num: 7, strength: 7 },
       { id: 's2', suit: '♠', num: 7, strength: 7 }
-    ], field, { numberLock: true }, { lockedNumber: [4, 5] });
+    ], field, { numberLock: true }, { lockedNumber: 5 });
 
     expect(invalid.valid).toBe(false);
-    expect(invalid.message).toContain('連番縛り');
+    expect(invalid.message).toContain('数字縛り');
   });
 });
 
@@ -95,5 +106,59 @@ describe('RoomManager 10捨て', () => {
 
     expect(valid.success).toBe(true);
     expect(room.players[0].hand.length).toBe(0);
+  });
+
+  it('同じ捨て札IDを繰り返して枚数条件を満たせない', () => {
+    const roomManager = RoomManager;
+    roomManager.rooms = {};
+    roomManager.createRoom({ id: 'sA' }, { roomId: 'duplicate-discard', playerName: 'A', playerId: 'p1', rules: {} });
+    roomManager.joinRoom({ id: 'sB' }, { roomId: 'duplicate-discard', playerName: 'B', playerId: 'p2' });
+    const room = roomManager.rooms['duplicate-discard'];
+    room.status = 'playing';
+    room.turnIndex = 0;
+    room.fieldCards = [];
+    room.players[0].hand = [
+      { id: 'ten-a', suit: '♥', num: 10, strength: 10 },
+      { id: 'ten-b', suit: '♦', num: 10, strength: 10 },
+      { id: 'discard-a', suit: '♠', num: 3, strength: 3 },
+      { id: 'discard-b', suit: '♣', num: 4, strength: 4 }
+    ];
+
+    const result = roomManager.playCards('sA', {
+      roomId: 'duplicate-discard',
+      cards: room.players[0].hand.slice(0, 2),
+      discardCards: ['discard-a', 'discard-a']
+    });
+
+    expect(result.success).toBe(false);
+    expect(room.players[0].hand).toHaveLength(4);
+  });
+});
+
+describe('10捨て/7渡しの選択検証', () => {
+  it('該当する効果を使わずに捨て札や渡し札を送れない', () => {
+    const roomManager = RoomManager;
+    roomManager.rooms = {};
+    roomManager.createRoom({ id: 'sA' }, { roomId: 'unexpected-side-cards', playerName: 'A', playerId: 'p1', rules: { tenDiscard: false, sevenPass: false } });
+    roomManager.joinRoom({ id: 'sB' }, { roomId: 'unexpected-side-cards', playerName: 'B', playerId: 'p2' });
+    const room = roomManager.rooms['unexpected-side-cards'];
+    room.status = 'playing';
+    room.turnIndex = 0;
+    room.fieldCards = [];
+    room.players[0].hand = [
+      { id: 'play', suit: '♠', num: 3, strength: 3 },
+      { id: 'discard', suit: '♥', num: 4, strength: 4 },
+      { id: 'pass', suit: '♦', num: 5, strength: 5 }
+    ];
+
+    const result = roomManager.playCards('sA', {
+      roomId: 'unexpected-side-cards',
+      cards: [room.players[0].hand[0]],
+      discardCards: ['discard'],
+      passedCards: ['pass']
+    });
+
+    expect(result.success).toBe(false);
+    expect(room.players[0].hand).toHaveLength(3);
   });
 });

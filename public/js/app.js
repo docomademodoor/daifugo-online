@@ -29,7 +29,7 @@ const RULE_LABELS = {
   staircase: '階段',
   staircaseRevolution: '階段革命',
   elevenBack: 'Jバック',
-  numberLock: '連番縛り',
+  numberLock: '数字縛り',
   fiveSkip: '5飛び',
   sevenPass: '7渡し',
   tenDiscard: '10捨て',
@@ -47,7 +47,7 @@ const RULE_DETAILS = {
   staircase: '同じマークの連番を出せる',
   staircaseRevolution: '同じマークの連番4枚以上で革命を起こす',
   elevenBack: 'Jを含む出し方で、場が流れるまで強さが逆転する',
-  numberLock: '同じマークの連番を出すと、その範囲を含むカードで出さなければならない',
+  numberLock: 'スートを問わず、同じ枚数で数字が連続した後は次の数字だけ出せる',
   fiveSkip: '5を含む出し方で飛ばし、人数超過時は自分の番に戻る',
   sevenPass: '7を出すと次の人へ枚数分を受け渡す',
   tenDiscard: '10を出すと、手札から1枚を捨てる',
@@ -102,6 +102,10 @@ const CPU_DIFFICULTY_LABELS = {
 function getRoleBadge(role) {
   if (!role) return '';
   return `<span class="role-badge ${ROLE_CLASSES[role] || ''}">${role}</span>`;
+}
+function escapeHtml(value) {
+  const entities = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' };
+  return String(value ?? '').replace(/[&<>"']/g, character => entities[character]);
 }
 
 function getOpponentSeatLayout(playerCount, index, stageWidth, seatWidth, stageHeight, fieldHeight, seatHeight) {
@@ -493,7 +497,7 @@ function updateWaitingRoom(room) {
     const isRoomHost = p.id === room.hostId;
     return `
       <div class="player-item ${isMe ? 'is-me' : ''} ${p.isCpu ? 'is-cpu' : ''}">
-        <span>${p.name} ${p.isCpu ? `<span class="cpu-tag">${CPU_DIFFICULTY_LABELS[p.difficulty] || 'ふつう'}</span>` : getRoleBadge(p.role)} ${isMe ? '<strong>(あなた)</strong>' : ''}</span>
+        <span>${escapeHtml(p.name)} ${p.isCpu ? `<span class="cpu-tag">${CPU_DIFFICULTY_LABELS[p.difficulty] || 'ふつう'}</span>` : getRoleBadge(p.role)} ${isMe ? '<strong>(あなた)</strong>' : ''}</span>
         ${isRoomHost ? '<span class="host-tag">ホスト</span>' : ''}
       </div>
     `;
@@ -829,7 +833,7 @@ function updateUI(data) {
   }
   if (data.lockedNumber) {
     const lockedNumbers = Array.isArray(data.lockedNumber) ? data.lockedNumber : [data.lockedNumber];
-    addStatusTag(`連番縛り ${lockedNumbers.join(' → ')}`);
+    addStatusTag(`数字縛り ${lockedNumbers.join(' → ')}`);
   }
 
   actionMessage.innerText = formatGameActionMessage(data.actionMessage);
@@ -906,7 +910,7 @@ function updateUI(data) {
     return `
       <div class="other-player-card ${isTurn ? 'active-turn' : ''}" data-seat="${index}" style="left:${seatPos.x}%; top:${seatPos.y}%; width:${seatCardWidth}px; height:${seatCardHeight}px; transform: translate(-50%, -50%);">
         <div class="player-name-row">
-          <strong>${p.name}</strong>
+          <strong>${escapeHtml(p.name)}</strong>
         </div>
         <div class="count-stack" style="width:${stackWidth}px;" aria-label="${p.cardCount}枚残り">
           ${stackCards}
@@ -1464,7 +1468,10 @@ function submitPlayCards() {
   const cardsToPlay = currentHand.filter(c => selectedCardIds.has(c.id));
   const extraSelection = beginSideSelection(cardsToPlay);
   if (extraSelection === null) {
-    socket.emit('pause-turn-timer', myRoomId);
+    socket.emit('pause-turn-timer', {
+      roomId: myRoomId,
+      cards: cardsToPlay.map(card => card.id)
+    });
     renderTurnCountdown(null);
     return;
   }
@@ -1586,7 +1593,7 @@ function showGameFinished(data) {
     const roundPointsLabel = roundPoints > 0 ? `+${roundPoints}` : String(roundPoints);
     return `
       <div class="ranking-item">
-        <span><strong>${rankTitle}:</strong> ${p.name}</span>
+        <span><strong>${rankTitle}:</strong> ${escapeHtml(p.name)}</span>
         <span class="ranking-result-meta"><span>${roundPointsLabel} pt</span>${getRoleBadge(p.role)}</span>
       </div>
     `;

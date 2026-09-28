@@ -1,4 +1,4 @@
-const { checkForbiddenFinish, getPlayStrength, isValidCombination, isValidPlay } = require('./rules');
+const { checkForbiddenFinish, countEffectiveRank, getPlayStrength, isValidCombination, isValidPlay } = require('./rules');
 
 const CARD_VALUES = {
   '3': 3,
@@ -85,7 +85,7 @@ function getPlayCandidates(hand, playCount, rules) {
         getSubsets(suitedCards, regularCount).forEach(subset => {
           const values = subset.map(getCardValue).sort((a, b) => a - b);
           const isConsecutive = values.every((value, index) => index === 0 || values[index - 1] + 1 === value);
-          if (isConsecutive) addCandidate(jokerCount ? [...subset, joker] : subset);
+          if (isConsecutive || jokerCount) addCandidate(jokerCount ? [...subset, joker] : subset);
         });
       }
     }
@@ -174,7 +174,7 @@ function buildPlayAction(cards, hand, rules) {
     .filter(card => !playedIds.has(card.id))
     .sort((a, b) => a.strength - b.strength);
   const sevenCount = rules.sevenPass === false ? 0 : cards.filter(card => card.num === 7).length;
-  const tenCount = rules.tenDiscard === false ? 0 : cards.filter(card => card.num === 10).length;
+  const tenCount = rules.tenDiscard === false ? 0 : countEffectiveRank(cards, 10);
   const passCount = Math.min(sevenCount, remaining.length);
   const passedCards = remaining.splice(0, passCount).map(card => card.id);
   const discardCount = Math.min(tenCount, remaining.length);

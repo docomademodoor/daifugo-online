@@ -1,5 +1,5 @@
 const { createDeck } = require('../utils/deck');
-const { isValidPlay, checkForbiddenFinish } = require('./rules');
+const { isValidPlay, checkForbiddenFinish, countEffectiveRank } = require('./rules');
 const { applyCardEffects, checkMiyakoOchi } = require('./cardEffects');
 
 const ROLE_POINTS = {
@@ -75,7 +75,8 @@ class RoomManager {
       nextCpuNumber: 1,
       completedRounds: 0,
       firstTurnExemptPlayerId: null,
-      turnDeadlineAt: null
+      turnDeadlineAt: null,
+      pendingSideSelection: null
     };
 
     this.rooms[trimmedId] = newRoom;
@@ -245,6 +246,7 @@ class RoomManager {
     room.exchangeSelections = {};
     room.turnDeadlineAt = null;
     room.firstTurnExemptPlayerId = null;
+    room.pendingSideSelection = null;
 
     const deck = createDeck(room.rules.includeJoker);
     room.players.forEach(p => {
@@ -265,11 +267,11 @@ class RoomManager {
       [room.players[i], room.players[j]] = [room.players[j], room.players[i]];
     }
     room.turnIndex = Math.floor(Math.random() * room.players.length);
+    this.selectStartingPlayer(room);
 
     const exchangePlan = this.buildExchangePlan(room);
     if (exchangePlan.length > 0) {
       room.status = 'waiting-exchange';
-      room.firstTurnExemptPlayerId = room.players[room.turnIndex]?.id || null;
       room.exchangeRequirements = exchangePlan.reduce((acc, pair) => {
         acc[pair.fromId] = pair.count;
         return acc;
@@ -281,6 +283,10 @@ class RoomManager {
     room.status = 'playing';
     room.actionMessage = 'ゲーム開始！カードを配りました。';
 
+    return { success: true, room };
+  }
+
+  selectStartingPlayer(room) {
     if (!room.previousRoles && room.rules.dia3Start) {
       const dia3HolderIndex = room.players.findIndex(p =>
         p.hand.some(c => c.suit === '♦' && c.num === 3)
@@ -290,19 +296,20 @@ class RoomManager {
         room.actionMessage = `【♢3スタート】♦3を持っている ${room.players[dia3HolderIndex].name} からターン開始です！`;
       }
     } else if (room.previousRoles) {
-      const daihinminIndex = room.players.findIndex(p => p.role === '大貧民');
-      if (daihinminIndex !== -1) {
-        room.turnIndex = daihinminIndex;
-        room.actionMessage = `大貧民の ${room.players[daihinminIndex].name} からスタートです！`;
+      const lowestRole = room.players.length <= 3 ? '貧民' : '大貧民';
+      const lowRankIndex = room.players.findIndex(p => p.role === lowestRole);
+      if (lowRankIndex !== -1) {
+        room.turnIndex = lowRankIndex;
+        room.actionMessage = `${room.players[lowRankIndex].role}の ${room.players[lowRankIndex].name} からスタートです！`;
       }
     }
 
     room.firstTurnExemptPlayerId = room.players[room.turnIndex]?.id || null;
-
-    return { success: true, room };
   }
 
   buildExchangePlan(room) {
+    if (room.players.length < 4) return [];
+
     const daifugo = room.players.find(p => p.role === '大富豪');
     const fugo = room.players.find(p => p.role === '富豪');
     const hinmin = room.players.find(p => p.role === '貧民');
@@ -328,11 +335,14 @@ class RoomManager {
 
       if (!from || !to || chosen.length !== pair.count) continue;
 
-      const chosenIds = new Set(chosen.map(c => c.id || c));
-      if (!chosen.every(card => from.hand.some(h => h.id === (card.id || card)))) continue;
+      const chosenIds = chosen.map(card => typeof card === 'string' ? card : card?.id);
+      if (chosenIds.some(id => typeof id !== 'string') || new Set(chosenIds).size !== chosen.length) continue;
+      const canonicalCards = chosenIds.map(id => from.hand.find(card => card.id === id));
+      if (canonicalCards.some(card => !card)) continue;
 
-      from.hand = from.hand.filter(card => !chosenIds.has(card.id));
-      to.hand.push(...chosen);
+      const chosenIdSet = new Set(chosenIds);
+      from.hand = from.hand.filter(card => !chosenIdSet.has(card.id));
+      to.hand.push(...canonicalCards);
       to.hand.sort((a, b) => a.strength - b.strength);
       exchangeLog.push(`${from.name} が ${to.name} に ${pair.count}枚交換`);
     }
@@ -385,15 +395,17 @@ class RoomManager {
       return { success: false, message: 'プレイヤーが見つかりません' };
     }
 
-    const hasCards = selected.every(card =>
-      player.hand.some(h => h.id === card.id)
-    );
-    if (!hasCards) {
+    const selectedIds = selected.map(card => typeof card === 'string' ? card : card?.id);
+    if (selectedIds.some(id => typeof id !== 'string') || new Set(selectedIds).size !== selected.length) {
+      return { success: false, message: '交換するカードを重複なく選んでください' };
+    }
+    const canonicalCards = selectedIds.map(id => player.hand.find(card => card.id === id));
+    if (canonicalCards.some(card => !card)) {
       return { success: false, message: '選んだカードはあなたの手札にありません' };
     }
 
     room.exchangeSelections = room.exchangeSelections || {};
-    room.exchangeSelections[socketId] = selected;
+    room.exchangeSelections[socketId] = canonicalCards;
 
     const allSubmitted = Object.keys(room.exchangeRequirements || {}).every(playerId =>
       room.exchangeSelections[playerId] && room.exchangeSelections[playerId].length === room.exchangeRequirements[playerId]
@@ -413,6 +425,16 @@ class RoomManager {
     return { success: true, room, completed: true };
   }
 
+  getSideSelectionRequirements(room, player, playedCards) {
+    const playedIds = new Set(playedCards.map(card => card.id));
+    const remainingCount = player.hand.filter(card => !playedIds.has(card.id)).length;
+    const sevenCount = room.rules.sevenPass === false ? 0 : countEffectiveRank(playedCards, 7);
+    const tenCount = room.rules.tenDiscard === false ? 0 : countEffectiveRank(playedCards, 10);
+    const pass = Math.min(sevenCount, remainingCount);
+    const discard = Math.min(tenCount, remainingCount - pass);
+    return { pass, discard };
+  }
+
   playCards(socketId, { roomId, cards, discardCards = [], passedCards = [] }) {
     const room = this.rooms[roomId];
     if (!room || room.status !== 'playing') {
@@ -424,27 +446,36 @@ class RoomManager {
       return { success: false, message: 'あなたのターンではありません！' };
     }
 
-    const playedCards = Array.isArray(cards) ? cards : [cards];
-    if (playedCards.length === 0) {
+    const requestedCards = Array.isArray(cards) ? cards : [cards];
+    if (requestedCards.length === 0) {
       return { success: false, message: '出すカードを選択してください' };
     }
-    const hasAllCards = playedCards.every(c =>
-      currentPlayer.hand.some(h => h.id === c.id)
-    );
-    if (!hasAllCards) {
+    const playedIds = requestedCards.map(card => typeof card === 'string' ? card : card?.id);
+    if (playedIds.some(id => typeof id !== 'string') || new Set(playedIds).size !== requestedCards.length) {
+      return { success: false, message: '出すカードを重複なく選んでください' };
+    }
+    const cardsById = new Map(currentPlayer.hand.map(card => [card.id, card]));
+    const playedCards = playedIds.map(id => cardsById.get(id));
+    if (playedCards.some(card => !card)) {
       return { success: false, message: '指定されたカードを所持していません' };
     }
 
-    const playedIds = new Set(playedCards.map(c => c.id));
-    const sideSelectionCards = currentPlayer.hand.filter(card => !playedIds.has(card.id));
-    const hasSevenPass = room.rules.sevenPass !== false && playedCards.some(c => c.num === 7);
-    const hasTenDiscard = room.rules.tenDiscard !== false && playedCards.some(c => c.num === 10);
-    const passRequired = hasSevenPass
-      ? Math.min(playedCards.filter(c => c.num === 7).length, sideSelectionCards.length)
-      : 0;
-    const discardRequired = hasTenDiscard
-      ? Math.min(playedCards.filter(c => c.num === 10).length, sideSelectionCards.length - passRequired)
-      : 0;
+    if (room.pendingSideSelection?.playerId === currentPlayer.id) {
+      const pendingIds = [...room.pendingSideSelection.cardIds].sort();
+      const submittedIds = [...playedIds].sort();
+      if (pendingIds.length !== submittedIds.length || pendingIds.some((id, index) => id !== submittedIds[index])) {
+        return { success: false, message: '追加カード選択中は、最初に選んだカードを出してください。' };
+      }
+    }
+
+    const playedIdSet = new Set(playedIds);
+    const hasSevenPass = room.rules.sevenPass !== false && countEffectiveRank(playedCards, 7) > 0;
+    const hasTenDiscard = room.rules.tenDiscard !== false && countEffectiveRank(playedCards, 10) > 0;
+    const { pass: passRequired, discard: discardRequired } = this.getSideSelectionRequirements(
+      room,
+      currentPlayer,
+      playedCards
+    );
 
     const hasDiamondThree = currentPlayer.hand.some(c => c.id === '♦3');
     if (hasDiamondThree && !playedCards.some(c => c.id === '♦3')) {
@@ -453,6 +484,19 @@ class RoomManager {
 
     const discardIds = Array.isArray(discardCards) ? discardCards : [];
     const passIds = Array.isArray(passedCards) ? passedCards : [];
+
+    if (discardIds.some(id => typeof id !== 'string') || new Set(discardIds).size !== discardIds.length) {
+      return { success: false, message: '捨てるカードを重複なく選んでください。' };
+    }
+    if (passIds.some(id => typeof id !== 'string') || new Set(passIds).size !== passIds.length) {
+      return { success: false, message: '渡すカードを重複なく選んでください。' };
+    }
+    if (!hasTenDiscard && discardIds.length > 0) {
+      return { success: false, message: '10捨ての効果がないカードは捨てられません。' };
+    }
+    if (!hasSevenPass && passIds.length > 0) {
+      return { success: false, message: '7渡しの効果がないカードは渡せません。' };
+    }
 
     if (hasTenDiscard) {
       if (discardIds.length !== discardRequired) {
@@ -496,6 +540,7 @@ class RoomManager {
     }
 
     room.firstTurnExemptPlayerId = null;
+    room.pendingSideSelection = null;
 
     const finishCheck = checkForbiddenFinish(
       playedCards,
@@ -517,6 +562,7 @@ class RoomManager {
       room.fieldCards = [];
       room.isElevenBack = false;
       room.lockedSuit = null;
+      room.lockedNumber = null;
       room.passCount = 0;
       room.actionMessage = `【禁止上がり！】${currentPlayer.name} は ${finishCheck.reason} 反則負けで最下位になりました！`;
 
@@ -531,7 +577,7 @@ class RoomManager {
     const passedCardsList = currentPlayer.hand.filter(c => passSet.has(c.id));
     const discardedCardsList = currentPlayer.hand.filter(c => discardSet.has(c.id));
 
-    currentPlayer.hand = currentPlayer.hand.filter(c => !playedIds.has(c.id));
+    currentPlayer.hand = currentPlayer.hand.filter(c => !playedIdSet.has(c.id));
     currentPlayer.hand = currentPlayer.hand.filter(c => !discardSet.has(c.id));
     currentPlayer.hand = currentPlayer.hand.filter(c => !passSet.has(c.id));
 
@@ -552,7 +598,7 @@ class RoomManager {
       discardedCards: discardedCardsList
     });
 
-    if (room.rules.sevenPass !== false && playedCards.some(c => c.num === 7) && passedCardsList.length > 0) {
+    if (room.rules.sevenPass !== false && countEffectiveRank(playedCards, 7) > 0 && passedCardsList.length > 0) {
       const nextIndex = this.getNextTurnIndex(room, room.turnIndex);
       const nextPlayer = room.players[nextIndex];
       nextPlayer.hand.push(...passedCardsList);
@@ -565,6 +611,7 @@ class RoomManager {
       room.passCount = 0;
       room.isElevenBack = false;
       room.lockedSuit = null;
+      room.lockedNumber = null;
       if (currentPlayer.hand.length === 0) {
         room.turnIndex = this.getNextTurnIndex(room, room.turnIndex);
       }
@@ -590,6 +637,10 @@ class RoomManager {
     const currentPlayer = room.players[room.turnIndex];
     if (!currentPlayer || currentPlayer.id !== socketId) {
       return { success: false, message: 'あなたのターンではありません！' };
+    }
+
+    if (room.pendingSideSelection?.playerId === currentPlayer.id) {
+      return { success: false, message: 'カードの捨て渡し選択を完了してください。' };
     }
 
     room.firstTurnExemptPlayerId = null;
@@ -671,12 +722,22 @@ class RoomManager {
   assignRoles(room) {
     const sorted = [...room.players].sort((a, b) => (a.rank || 99) - (b.rank || 99));
     const count = sorted.length;
+    const roleTables = {
+      2: ['富豪', '貧民'],
+      3: ['富豪', '平民', '貧民'],
+      4: ['大富豪', '富豪', '貧民', '大貧民'],
+      5: ['大富豪', '富豪', '平民', '貧民', '大貧民'],
+      6: ['大富豪', '富豪', '平民', '平民', '貧民', '大貧民']
+    };
 
     sorted.forEach(player => {
-      if (player.rank === 1) player.role = '大富豪';
+      const roleTable = roleTables[count];
+      if (roleTable) {
+        player.role = roleTable[player.rank - 1] || '平民';
+      } else if (player.rank === 1) player.role = '大富豪';
       else if (player.rank === count) player.role = '大貧民';
-      else if (count >= 4 && player.rank === 2) player.role = '富豪';
-      else if (count >= 4 && player.rank === count - 1) player.role = '貧民';
+      else if (player.rank === 2) player.role = '富豪';
+      else if (player.rank === count - 1) player.role = '貧民';
       else player.role = '平民';
     });
 
