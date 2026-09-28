@@ -3,8 +3,8 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const roomManager = require('./game/roomManager');
-const { chooseCpuAction, chooseCpuExchangeCards } = require('./game/cpuPlayer');
-const { isValidPlay } = require('./game/rules');
+const { chooseCpuAction, chooseCpuExchangeCards } = require('./game/daifugo/cpuPlayer');
+const { isValidPlay } = require('./game/daifugo/rules');
 
 const app = express();
 const server = http.createServer(app);
@@ -13,8 +13,11 @@ const io = new Server(server, {
 });
 const cpuTurnTimers = new Map();
 const CPU_TURN_DELAY_MS = Math.max(0, Number(process.env.CPU_TURN_DELAY_MS) || 1200);
+const CHINCHIRO_CPU_INITIAL_DELAY_MS = Math.max(700, Number(process.env.CHINCHIRO_CPU_INITIAL_DELAY_MS) || 900);
+const CHINCHIRO_CPU_RESULT_HOLD_MS = Math.max(4000, Number(process.env.CHINCHIRO_CPU_RESULT_HOLD_MS) || 4000);
 const humanTurnTimers = new Map();
 const TURN_SELECTION_TIMEOUT_MS = Math.max(100, Number(process.env.TURN_SELECTION_TIMEOUT_MS) || 30000);
+const isValidRoomId = roomId => /^\d{5}$/.test(String(roomId || '').trim());
 
 app.use(express.static(path.join(__dirname, '../public')));
 
@@ -40,6 +43,7 @@ function clearHumanTurnTimer(roomId) {
 function scheduleHumanTurnTimer(roomId) {
   clearHumanTurnTimer(roomId);
   const room = roomManager.rooms[roomId];
+  if (room?.gameType === 'chinchiro') return;
   const player = room?.players[room.turnIndex];
   if (!room || room.status !== 'playing' || !player || player.isCpu
     || player.id === room.firstTurnExemptPlayerId) return;
@@ -137,12 +141,25 @@ function scheduleCpuTurn(roomId) {
   clearHumanTurnTimer(roomId);
 
   const scheduledPlayerId = player.id;
+  const chinchiroDelay = room.gameType === 'chinchiro'
+    ? Math.max(CHINCHIRO_CPU_INITIAL_DELAY_MS, (room.chinchiroNextCpuTurnAt || 0) - Date.now())
+    : CPU_TURN_DELAY_MS;
   const timer = setTimeout(() => {
     cpuTurnTimers.delete(roomId);
     const currentRoom = roomManager.rooms[roomId];
     const currentPlayer = currentRoom?.players[currentRoom.turnIndex];
     if (!currentRoom || currentRoom.status !== 'playing' || currentPlayer?.id !== scheduledPlayerId) {
       scheduleCpuTurn(roomId);
+      return;
+    }
+
+    if (currentRoom.gameType === 'chinchiro') {
+      const result = roomManager.performGameAction(currentPlayer.id, roomId, 'roll');
+      if (result.success) {
+        result.room.chinchiroNextCpuTurnAt = Date.now() + CHINCHIRO_CPU_RESULT_HOLD_MS;
+        io.to(roomId).emit('state-updated', roomManager.getPublicState(result.room));
+        scheduleCpuTurn(roomId);
+      }
       return;
     }
 
@@ -169,7 +186,7 @@ function scheduleCpuTurn(roomId) {
     scheduleHumanTurnTimer(roomId);
     io.to(roomId).emit('state-updated', roomManager.getPublicState(result.room));
     scheduleCpuTurn(roomId);
-  }, CPU_TURN_DELAY_MS);
+  }, chinchiroDelay);
 
   cpuTurnTimers.set(roomId, timer);
 }
@@ -179,6 +196,10 @@ io.on('connection', (socket) => {
 
   // ルーム新規作成
   socket.on('create-room', ({ roomId, playerName, playerId, rules, gameType }) => {
+    if (!isValidRoomId(roomId)) {
+      socket.emit('error', 'ルームIDは5桁の数字で入力してください');
+      return;
+    }
     socket.data.playerId = playerId || socket.id;
     const result = roomManager.createRoom(socket, {
       roomId,
@@ -227,6 +248,10 @@ io.on('connection', (socket) => {
 
   // 既存ルーム参加
   socket.on('join-room', ({ roomId, playerName, playerId }) => {
+    if (!isValidRoomId(roomId)) {
+      socket.emit('error', 'ルームIDは5桁の数字で入力してください');
+      return;
+    }
     const stablePlayerId = playerId || socket.id;
     socket.data.playerId = stablePlayerId;
     const result = roomManager.joinRoom(socket, { roomId, playerName, playerId: stablePlayerId });
@@ -300,7 +325,7 @@ io.on('connection', (socket) => {
 
   socket.on('check-room-exists', (roomId) => {
     const targetRoomId = String(roomId || '').trim();
-    const exists = !!roomManager.rooms[targetRoomId];
+    const exists = isValidRoomId(targetRoomId) && !!roomManager.rooms[targetRoomId];
     socket.emit('room-exists', { roomId: targetRoomId, exists });
   });
 
@@ -316,6 +341,28 @@ io.on('connection', (socket) => {
     scheduleHumanTurnTimer(roomId);
     broadcastGameStarted(room);
     submitCpuExchangeSelections(roomId);
+    scheduleCpuTurn(roomId);
+  });
+
+  socket.on('roll-chinchiro', (roomId) => {
+    const result = roomManager.performGameAction(socket.id, roomId, 'roll');
+    if (!result.success) {
+      socket.emit('error', result.message);
+      return;
+    }
+
+    io.to(roomId).emit('state-updated', roomManager.getPublicState(result.room));
+    scheduleCpuTurn(roomId);
+  });
+
+  socket.on('hold-chinchiro', (roomId) => {
+    const result = roomManager.performGameAction(socket.id, roomId, 'hold');
+    if (!result.success) {
+      socket.emit('error', result.message);
+      return;
+    }
+
+    io.to(roomId).emit('state-updated', roomManager.getPublicState(result.room));
     scheduleCpuTurn(roomId);
   });
 

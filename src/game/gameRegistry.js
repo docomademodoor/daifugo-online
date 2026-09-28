@@ -1,11 +1,10 @@
 const GameRegistry = require('../core/gameRegistry');
+const daifugo = require('./daifugo/definition');
+const chinchiro = require('./chinchiro/definition');
 
 const gameRegistry = new GameRegistry([
-  {
-    id: 'daifugo',
-    label: '大富豪',
-    maxPlayers: 8
-  }
+  daifugo,
+  chinchiro
 ]);
 
 module.exports = gameRegistry;

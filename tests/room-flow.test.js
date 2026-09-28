@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import roomManager from '../src/game/roomManager.js';
-import { applyCardEffects } from '../src/game/cardEffects.js';
+import { applyCardEffects } from '../src/game/daifugo/cardEffects.js';
 
 describe('RoomManager flow', () => {
   it('部屋作成と参加、開始まで進む', () => {

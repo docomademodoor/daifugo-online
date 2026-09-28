@@ -3,15 +3,21 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>オンライン大富豪</title>
-  <link rel="stylesheet" href="/css/style.css?v=3.3">
+  <title>もんにゃオンラインゲーム</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;500;700;800&amp;display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css?v=3.15">
   <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
 
   <!-- ロビー画面（入室前・待機中） -->
   <div id="lobby-container" class="container">
-    <h1>♠♥ 大富豪オンライン ♦♣</h1>
+    <h1 class="lobby-title">
+      <span>もんにゃオンラインゲーム</span>
+      <span class="lobby-paw-mark" aria-hidden="true">🐾</span>
+    </h1>
 
     <!-- エラーメッセージ表示（ロビー用） -->
     <div id="lobby-error" class="error-banner" style="display:none;"></div>
@@ -30,18 +36,44 @@
           <input type="text" id="create-player-name" placeholder="例: プレイヤー1" value="プレイヤー1">
         </div>
         <div class="input-group">
-          <label for="create-room-id">合言葉（ルームID）</label>
-          <input type="text" id="create-room-id" placeholder="例: daifugo-room" value="00000">
+          <label for="create-room-id">ルームID</label>
+          <div class="room-id-input-row">
+            <input type="text" id="create-room-id" inputmode="numeric" pattern="[0-9]{5}" placeholder="5桁の数字" value="00000" autocomplete="off">
+            <button id="generate-room-id-btn" class="secondary-btn room-id-auto-btn" type="button" onclick="generateRoomId()">自動設定</button>
+          </div>
         </div>
 
-        <div class="input-group">
-          <label for="game-type-select">ゲーム</label>
-          <select id="game-type-select">
-            <option value="daifugo">大富豪</option>
-          </select>
-        </div>
+        <fieldset class="game-choice-group">
+          <legend>ゲームを選ぶ</legend>
+          <div class="game-choice-grid" role="radiogroup" aria-label="ゲーム">
+            <label class="game-choice">
+              <input type="radio" name="gameType" value="daifugo" checked onchange="updateGameSetup()">
+              <span class="game-choice-card">
+                <span class="game-choice-symbol daifugo-symbol" aria-hidden="true"><span>♠</span><span>♥</span><span>♦</span><span>♣</span></span>
+                <span class="game-choice-copy">
+                  <strong>大富豪</strong>
+                  <small>手札を出し切って順位を競う</small>
+                  <span class="game-choice-meta">最大8人</span>
+                </span>
+                <span class="game-choice-indicator" aria-hidden="true"></span>
+              </span>
+            </label>
+            <label class="game-choice">
+              <input type="radio" name="gameType" value="chinchiro" onchange="updateGameSetup()">
+              <span class="game-choice-card">
+                <span class="game-choice-symbol chinchiro-symbol" aria-hidden="true">⚄</span>
+                <span class="game-choice-copy">
+                  <strong>チンチロ</strong>
+                  <small>3個のサイコロで役を競う</small>
+                  <span class="game-choice-meta">最大10人</span>
+                </span>
+                <span class="game-choice-indicator" aria-hidden="true"></span>
+              </span>
+            </label>
+          </div>
+        </fieldset>
 
-        <div class="rules-section">
+        <div id="daifugo-rules-section" class="rules-section">
           <h3>採用するルール設定</h3>
           <p class="rules-always-on">常時適用: 革命 / マーク縛り / スペ3返し / 禁止上がり / 都落ち / ♢3スタート / ジョーカー</p>
           <div class="rules-grid">
@@ -76,6 +108,17 @@
           </div>
         </div>
 
+        <section id="chinchiro-rules-section" class="rules-section chinchiro-lobby-rules-section" style="display:none;" aria-labelledby="chinchiro-lobby-rules-heading">
+          <h3 id="chinchiro-lobby-rules-heading">チンチロのルール</h3>
+          <ul class="chinchiro-lobby-rules">
+            <li><strong>振る</strong><span>サイコロ3個を振ります。1人最大3回で、3回目は自動確定です。</span></li>
+            <li><strong>確定</strong><span>1回目・2回目の後に「この役で確定」を選ぶと次の人へ進みます。</span></li>
+            <li><strong>役の順</strong><span>ピンゾロ ＞ シゴロ ＞ その他のゾロ目 ＞ ペア ＞ 役なし ＞ ヒフミ</span></li>
+            <li><strong>同順位</strong><span>同じ強さは同順位です。役なし同士も同順位になります。</span></li>
+            <li><strong>得点</strong><span>順位に応じて1〜参加人数分のポイントを獲得し、累計します。</span></li>
+          </ul>
+        </section>
+
         <button class="primary-btn" onclick="createRoom()">ルームを作成して待機</button>
       </div>
 
@@ -86,8 +129,8 @@
           <input type="text" id="join-player-name" placeholder="例: プレイヤー2" value="プレイヤー2">
         </div>
         <div class="input-group">
-          <label for="join-room-id">合言葉（ルームID）</label>
-          <input type="text" id="join-room-id" placeholder="合言葉を入力" value="00000">
+          <label for="join-room-id">ルームID</label>
+          <input type="text" id="join-room-id" inputmode="numeric" pattern="[0-9]{5}" placeholder="5桁の数字" value="00000" autocomplete="off">
         </div>
         <button class="primary-btn" onclick="joinRoom()">ルームに参加する</button>
       </div>
@@ -96,12 +139,13 @@
     <!-- 入室後待機エリア -->
     <div id="waiting-area" style="display:none;">
       <div class="room-info-card">
-        <h2>合言葉: <span id="display-room-id" class="highlight-text"></span></h2>
-        <div id="display-rules" class="rule-badges"></div>
-        <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top: 12px;">
+        <h2>ルームID: <span id="display-room-id" class="highlight-text"></span></h2>
+        <div class="room-share-actions">
           <button id="copy-room-id-btn" class="secondary-btn" type="button" onclick="copyRoomId()">ルームIDをコピー</button>
-          <button id="copy-room-link-btn" class="secondary-btn" type="button" onclick="copyRoomShareLink()">URLリンクをコピー</button>
+          <button id="copy-room-link-btn" class="secondary-btn" type="button" onclick="copyRoomShareLink()">招待URLをコピー</button>
         </div>
+        <p id="display-game-type" class="room-game-type"></p>
+        <div id="display-rules" class="rule-badges"></div>
       </div>
 
       <div class="players-card">
@@ -109,24 +153,43 @@
         <div id="players-list" class="players-list"></div>
       </div>
 
-      <div id="host-controls" style="display:none; margin-top: 20px;">
-        <p id="host-start-hint" class="hint-text">2人以上揃うとゲームを開始できます</p>
-        <div style="display:flex; gap:10px; flex-wrap:wrap;">
-          <button id="start-btn" class="primary-btn" onclick="startGame()" disabled>ゲーム開始</button>
-          <label class="cpu-difficulty-control" for="cpu-difficulty-select">
-            <span>CPUレベル</span>
-            <select id="cpu-difficulty-select" class="cpu-difficulty-select">
-              <option value="easy">かんたん</option>
-              <option value="normal" selected>ふつう</option>
-              <option value="hard">強い</option>
-            </select>
-          </label>
-          <button id="add-cpu-btn" class="secondary-btn" type="button" onclick="addCpuPlayer()">CPUを追加</button>
-          <button id="remove-cpu-btn" class="secondary-btn" type="button" onclick="removeCpuPlayer()" disabled>CPUを削除</button>
-          <button id="room-lock-btn" class="secondary-btn" type="button" onclick="toggleRoomLock()">ルームをロック</button>
-          <button id="close-room-btn" class="secondary-btn" onclick="closeCurrentRoom()">ルームを閉じる</button>
+      <div id="host-controls" class="host-controls" style="display:none;">
+        <section class="host-launch" aria-labelledby="host-start-heading">
+          <div class="host-launch-copy">
+            <h3 id="host-start-heading">対戦を開始</h3>
+            <p id="host-start-hint" class="host-start-hint">2人以上揃うとゲームを開始できます</p>
+          </div>
+          <button id="start-btn" class="primary-btn host-start-btn" onclick="startGame()" disabled>ゲーム開始</button>
+        </section>
+
+        <div class="host-management">
+          <section class="host-group" aria-labelledby="cpu-management-heading">
+            <h3 id="cpu-management-heading">CPUプレイヤー</h3>
+            <div class="host-cpu-actions">
+              <label class="cpu-difficulty-control" for="cpu-difficulty-select">
+                <span>強さ</span>
+                <select id="cpu-difficulty-select" class="cpu-difficulty-select">
+                  <option value="easy">かんたん</option>
+                  <option value="normal" selected>ふつう</option>
+                  <option value="hard">強い</option>
+                </select>
+              </label>
+              <div class="cpu-action-buttons">
+                <button id="add-cpu-btn" class="secondary-btn" type="button" onclick="addCpuPlayer()">CPUを1人追加</button>
+                <button id="remove-cpu-btn" class="secondary-btn" type="button" onclick="removeCpuPlayer()" disabled>CPUを1人削除</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="host-group room-management-group" aria-labelledby="room-management-heading">
+            <h3 id="room-management-heading">ルーム管理</h3>
+            <div class="room-management-actions">
+              <button id="room-lock-btn" class="secondary-btn" type="button" onclick="toggleRoomLock()">新規参加をロック</button>
+              <button id="close-room-btn" class="danger-btn" type="button" onclick="closeCurrentRoom()">ルームを閉じる</button>
+            </div>
+            <p id="room-lock-status" class="room-lock-status" style="display:none;" role="status"></p>
+          </section>
         </div>
-        <p id="room-lock-status" class="hint-text" style="display:none;"></p>
       </div>
       <div id="guest-waiting-msg" style="display:none; margin-top: 20px;" class="hint-text">
         ホストがゲームを開始するのを待っています...
@@ -138,7 +201,7 @@
   <div id="game-container" class="container" style="display:none;">
     <!-- ゲームヘッダー -->
     <div class="game-header">
-      <div class="game-room-tag">合言葉: <span id="game-room-id"></span></div>
+      <div class="game-room-tag">ルームID: <span id="game-room-id"></span></div>
       <div class="game-header-actions">
         <div id="game-rules-badges" class="rule-badges"></div>
         <button id="overall-ranking-toggle" class="secondary-btn rules-toggle-btn" type="button" onclick="toggleOverallRanking()">総合順位</button>
@@ -154,6 +217,51 @@
       <div id="game-status-tags" class="game-status-tags"></div>
       <p id="game-action-message" class="game-action-message"></p>
     </div>
+
+    <section id="chinchiro-board" class="chinchiro-board" style="display:none;" aria-labelledby="chinchiro-heading">
+      <div class="chinchiro-board-header">
+        <div>
+          <p class="chinchiro-kicker">THREE DICE · UP TO THREE ROLLS</p>
+          <h2 id="chinchiro-heading">チンチロ</h2>
+        </div>
+        <span id="chinchiro-round" class="chinchiro-round"></span>
+      </div>
+      <p id="chinchiro-turn-status" class="chinchiro-turn-status" role="status" aria-live="polite"></p>
+      <div class="chinchiro-play-area">
+        <div class="chinchiro-dice-panel">
+          <div class="dice-roll-stage" aria-hidden="true">
+            <div id="chinchiro-bowl" class="chinchiro-bowl">
+              <span class="bowl-die"></span>
+              <span class="bowl-die"></span>
+              <span class="bowl-die"></span>
+            </div>
+          </div>
+          <div id="chinchiro-dice" class="chinchiro-dice" aria-label="サイコロの出目"></div>
+          <div class="chinchiro-result-line">
+            <strong id="chinchiro-hand-label">サイコロを振ってください</strong>
+            <span id="chinchiro-roll-count">0 / 3 回</span>
+          </div>
+        </div>
+        <div class="chinchiro-controls">
+          <button id="chinchiro-roll-btn" class="primary-btn" type="button" onclick="rollChinchiro()">サイコロを振る</button>
+          <button id="chinchiro-hold-btn" class="secondary-btn" type="button" onclick="holdChinchiro()">この役で確定</button>
+        </div>
+      </div>
+      <section class="chinchiro-scoreboard" aria-labelledby="chinchiro-scoreboard-heading">
+        <div class="chinchiro-scoreboard-header">
+          <h3 id="chinchiro-scoreboard-heading">プレイヤー</h3>
+          <span>役 · 今回の点 · 累計</span>
+        </div>
+        <div id="chinchiro-player-list" class="chinchiro-player-list"></div>
+      </section>
+      <section class="chinchiro-history" aria-labelledby="chinchiro-history-heading">
+        <div class="chinchiro-history-header">
+          <h3 id="chinchiro-history-heading">履歴</h3>
+          <span>直近のロール</span>
+        </div>
+        <div id="chinchiro-history-list" class="chinchiro-history-list" role="log" aria-live="polite"></div>
+      </section>
+    </section>
 
     <div class="table-stage">
       <!-- 場 -->
@@ -241,12 +349,12 @@
         <div id="modal-next-controls" style="margin-top: 20px;">
           <button id="next-game-btn" class="primary-btn" onclick="nextRound()" style="display:none;">次のゲームを開始（カード交換あり）</button>
           <div id="guest-next-hint" class="hint-text" style="display:none;">ホストが次のゲームを開始するまでお待ちください</div>
-          <button class="secondary-btn" onclick="location.reload()" style="margin-top: 10px;">ロビーに戻る</button>
+          <button class="secondary-btn" onclick="returnToRoomLobby()" style="margin-top: 10px;">待機ルームに戻る</button>
         </div>
       </div>
     </div>
   </div>
 
-  <script src="/js/app.js?v=2.24"></script>
+  <script src="/js/app.js?v=2.38"></script>
 </body>
 </html>

@@ -12,8 +12,14 @@ let activeJoinRequest = null;
 let latestGameState = null;
 let previousFieldCards = [];
 let turnCountdownInterval = null;
+let diceRollAnimationTimer = null;
+let diceRollAnimationInterval = null;
+let isDiceRollAnimating = false;
+let animatedChinchiroPlayerId = null;
+let animatedDiceResult = null;
 let errorTimer = null;
 const TABLE_SEAT_GAP = 20;
+const CHINCHIRO_ROLL_ANIMATION_MS = 2000;
 
 function clearSelectionState() {
   selectedCardIds.clear();
@@ -128,6 +134,11 @@ const CPU_DIFFICULTY_LABELS = {
   easy: 'かんたん',
   normal: 'ふつう',
   hard: '強い'
+};
+
+const GAME_LABELS = {
+  daifugo: '大富豪',
+  chinchiro: 'チンチロ'
 };
 
 function getRoleBadge(role) {
@@ -358,23 +369,35 @@ function switchTab(tab) {
   }
 }
 
+function getSelectedGameType() {
+  return document.querySelector('input[name="gameType"]:checked')?.value || 'daifugo';
+}
+
+function updateGameSetup() {
+  const gameType = getSelectedGameType();
+  const rulesSection = document.getElementById('daifugo-rules-section');
+  const chinchiroRules = document.getElementById('chinchiro-rules-section');
+  if (rulesSection) rulesSection.style.display = gameType === 'daifugo' ? 'block' : 'none';
+  if (chinchiroRules) chinchiroRules.style.display = gameType === 'chinchiro' ? 'block' : 'none';
+}
+
 // ルーム作成
 function createRoom() {
   clearError();
   const name = document.getElementById('create-player-name').value.trim();
   const roomId = document.getElementById('create-room-id').value.trim();
-  const gameType = document.getElementById('game-type-select')?.value || 'daifugo';
+  const gameType = getSelectedGameType();
 
   if (!name) {
     showError('プレイヤー名を入力してください');
     return;
   }
-  if (!roomId) {
-    showError('合言葉を入力してください');
+  if (!/^\d{5}$/.test(roomId)) {
+    showError('ルームIDは5桁の数字で入力してください');
     return;
   }
 
-  const rules = {
+  const daifugoRules = {
     // 常時ON（固定ルール）
     revolution: true,
     suitLock: true,
@@ -393,6 +416,7 @@ function createRoom() {
     sevenPass: document.getElementById('rule-sevenPass')?.checked ?? true,
     tenDiscard: document.getElementById('rule-tenDiscard').checked
   };
+  const rules = gameType === 'daifugo' ? daifugoRules : {};
 
   if (!myPlayerId) {
     myPlayerId = localStorage.getItem('daifugo-player-id-v1') || crypto.randomUUID();
@@ -414,8 +438,8 @@ function joinRoom() {
     showError('プレイヤー名を入力してください');
     return;
   }
-  if (!roomId) {
-    showError('合言葉を入力してください');
+  if (!/^\d{5}$/.test(roomId)) {
+    showError('ルームIDは5桁の数字で入力してください');
     return;
   }
 
@@ -455,7 +479,7 @@ function resetViewportLayout() {
 function getRoomIdFromPath() {
   const rawPath = window.location.pathname || '/';
   const value = decodeURIComponent(rawPath.replace(/^\/+|\/+$/g, ''));
-  return value && value !== 'index.html' ? value : '';
+  return /^\d{5}$/.test(value) ? value : '';
 }
 
 function syncRoomIdInputFromUrl() {
@@ -466,6 +490,22 @@ function syncRoomIdInputFromUrl() {
   const joinInput = document.getElementById('join-room-id');
   if (createInput) createInput.value = roomIdFromPath;
   if (joinInput) joinInput.value = roomIdFromPath;
+}
+
+function sanitizeRoomIdInput(input) {
+  const selectionStart = input.selectionStart;
+  const sanitized = input.value.replace(/\D/g, '').slice(0, 5);
+  if (input.value === sanitized) return;
+  input.value = sanitized;
+  const cursor = Math.min(selectionStart ?? sanitized.length, sanitized.length);
+  input.setSelectionRange(cursor, cursor);
+}
+
+function generateRoomId() {
+  const input = document.getElementById('create-room-id');
+  if (!input) return;
+  input.value = String(Math.floor(Math.random() * 100000)).padStart(5, '0');
+  input.focus();
 }
 
 async function copyTextToClipboard(text, successMessage) {
@@ -554,14 +594,15 @@ function resetToLobbyView() {
 
 socket.on('room-closed', ({ roomId }) => {
   clearRecoveryState();
-
-  if (myRoomId === roomId) {
-    myRoomId = '';
-    isHost = false;
-    resetToLobbyView();
-  }
-
-  showError('ホストがルームを閉じました。');
+  myRoomId = '';
+  isHost = false;
+  if (getRoomIdFromPath() === roomId) window.history.replaceState({}, '', '/');
+  ['create-room-id', 'join-room-id'].forEach(inputId => {
+    const input = document.getElementById(inputId);
+    if (input?.value.trim() === roomId) input.value = '';
+  });
+  resetToLobbyView();
+  showError('ルームが閉じられました。ロビーに戻りました。');
 });
 
 socket.on('room-updated', (roomData) => {
@@ -575,11 +616,14 @@ function updateWaitingRoom(room) {
 
   myRoomId = room.roomId;
   document.getElementById('display-room-id').innerText = room.roomId;
+  document.getElementById('display-game-type').innerText = GAME_LABELS[room.gameType] || GAME_LABELS.daifugo;
   document.getElementById('player-count').innerText = room.players.length;
   document.getElementById('room-max-players').innerText = room.maxPlayers || 8;
   const cpuCount = room.players.filter(player => player.isCpu).length;
   document.getElementById('cpu-count').innerText = cpuCount;
 
+  const displayRules = document.getElementById('display-rules');
+  displayRules.style.display = room.gameType === 'chinchiro' ? 'none' : 'flex';
   renderRuleBadges('display-rules', room.rules);
 
   const currentSocketId = socket.id || myId;
@@ -603,16 +647,21 @@ function updateWaitingRoom(room) {
   const removeCpuBtn = document.getElementById('remove-cpu-btn');
   const roomLockBtn = document.getElementById('room-lock-btn');
   const roomLockStatus = document.getElementById('room-lock-status');
+  const cpuDifficultyControl = document.querySelector('.cpu-difficulty-control');
+  const cpuActions = document.querySelector('.host-cpu-actions');
+  const hasCpuDifficulty = room.gameType === 'daifugo';
+  cpuDifficultyControl.style.display = hasCpuDifficulty ? 'flex' : 'none';
+  cpuActions.classList.toggle('without-difficulty', !hasCpuDifficulty);
 
   const amIHost = isHost || (room.hostId === currentSocketId);
 
   if (amIHost) {
-    hostControls.style.display = 'block';
+    hostControls.style.display = 'grid';
     guestMsg.style.display = 'none';
-    addCpuBtn.disabled = room.players.length >= 8;
+    addCpuBtn.disabled = room.players.length >= (room.maxPlayers || 8);
     removeCpuBtn.disabled = cpuCount === 0;
     roomLockBtn.dataset.locked = String(!!room.isLocked);
-    roomLockBtn.innerText = room.isLocked ? 'ロック解除' : 'ルームをロック';
+    roomLockBtn.innerText = room.isLocked ? '新規参加ロックを解除' : '新規参加をロック';
     roomLockStatus.style.display = room.isLocked ? 'block' : 'none';
     roomLockStatus.innerText = room.isLocked ? 'ロック中：新しい参加者は入室できません' : '';
     if (room.players.length >= 2) {
@@ -658,9 +707,22 @@ function renderRuleBadges(elementId, rules) {
   container.innerHTML = badges.length > 0 ? badges.join('') : '<span class="badge">ルール追加なし</span>';
 }
 
-function renderRulesModal(rules) {
+function renderRulesModal(rules, gameType = 'daifugo') {
   const modalBody = document.getElementById('rules-modal-body');
   if (!modalBody) return;
+
+  if (gameType === 'chinchiro') {
+    modalBody.innerHTML = `
+      <div class="rules-section-group">
+        <h3>チンチロの遊び方</h3>
+        <div class="rules-modal-item"><strong>サイコロ</strong><span>3個を振り、1ターン最大3回まで挑戦できます。</span></div>
+        <div class="rules-modal-item"><strong>確定</strong><span>3回目の前に「この役で確定」を選ぶと次の人へ進みます。</span></div>
+        <div class="rules-modal-item"><strong>役の強さ</strong><span>ピンゾロ、シゴロ、ゾロ目、ペア、役なし、ヒフミの順です。</span></div>
+        <div class="rules-modal-item"><strong>得点</strong><span>順位に応じて1点から人数分まで加算し、同じ役は同順位です。</span></div>
+      </div>
+    `;
+    return;
+  }
 
   const enabledRules = Object.keys(rules || {})
     .filter(k => rules[k])
@@ -737,7 +799,9 @@ function applyViewportFit() {
         gameContainer.style.display = 'flex';
       }
     }
-    document.body.style.overflow = isMobile && document.body.classList.contains('game-active')
+    document.body.style.overflow = isMobile
+      && document.body.classList.contains('game-active')
+      && !document.body.classList.contains('chinchiro-mode')
       ? 'hidden'
       : 'auto';
     return;
@@ -776,8 +840,9 @@ socket.on('game-started', (data) => {
   document.getElementById('game-finished-modal').style.display = 'none';
 
   document.getElementById('game-room-id').innerText = data.roomId;
+  document.getElementById('game-rules-badges').style.display = data.gameType === 'chinchiro' ? 'none' : 'flex';
   renderRuleBadges('game-rules-badges', data.rules);
-  renderRulesModal(data.rules);
+  renderRulesModal(data.rules, data.gameType);
 
   currentHand = data.hand || [];
   clearSelectionState();
@@ -799,6 +864,11 @@ socket.on('game-started', (data) => {
 // ゲーム状態更新
 socket.on('state-updated', (data) => {
   const oldFieldCards = latestGameState?.fieldCards || [];
+  const previousPlayers = new Map((latestGameState?.players || []).map(player => [player.id, player]));
+  const didRollChinchiroDice = data.gameType === 'chinchiro' && data.players.some(player => {
+    const previousPlayer = previousPlayers.get(player.id);
+    return previousPlayer && (player.rollsUsed || 0) > (previousPlayer.rollsUsed || 0);
+  });
   const newFieldCards = data.fieldCards || [];
   const fieldChanged = oldFieldCards.length !== newFieldCards.length
     || oldFieldCards.some((card, index) => card.id !== newFieldCards[index]?.id);
@@ -809,6 +879,11 @@ socket.on('state-updated', (data) => {
     previousFieldCards = [...oldFieldCards];
   } else if (oldFieldCards.length === 0) {
     previousFieldCards = [];
+  }
+
+  if (didRollChinchiroDice) {
+    const latestRoll = data.chinchiroHistory?.at(-1);
+    startChinchiroDiceAnimation(latestRoll?.dice, latestRoll?.playerId);
   }
 
   latestGameState = data;
@@ -870,6 +945,17 @@ function renderTurnCountdown(deadlineAt) {
 }
 
 function updateUI(data) {
+  if (data.gameType === 'chinchiro') {
+    document.body.classList.add('chinchiro-mode');
+    updateChinchiroUI(data);
+    return;
+  }
+
+  document.body.classList.remove('chinchiro-mode');
+  document.getElementById('chinchiro-board').style.display = 'none';
+  document.querySelector('.table-stage').style.display = '';
+  document.querySelector('.turn-control-section').style.display = '';
+  document.querySelector('.hand-section').style.display = '';
   const currentSocketId = socket.id || myId;
   const isMyTurn = data.turnPlayerId === currentSocketId;
   const turnInfo = document.getElementById('turn-info');
@@ -1031,6 +1117,186 @@ function updateUI(data) {
   }
 
   updatePlayButton();
+}
+
+function updateChinchiroUI(data) {
+  const currentSocketId = socket.id || myId;
+  const isMyTurn = data.status === 'playing' && data.turnPlayerId === currentSocketId;
+  const currentPlayer = data.players.find(player => player.id === data.turnPlayerId);
+  const currentRound = data.status === 'finished'
+    ? data.completedRounds
+    : (data.completedRounds || 0) + 1;
+  const latestRoll = [...(data.chinchiroHistory || [])]
+    .reverse()
+    .find(entry => entry.round === currentRound);
+  const latestRollPlayer = latestRoll
+    ? data.players.find(player => player.id === latestRoll.playerId)
+    : null;
+  const animatedPlayer = isDiceRollAnimating && animatedChinchiroPlayerId
+    ? data.players.find(player => player.id === animatedChinchiroPlayerId)
+    : null;
+  const displayedPlayer = animatedPlayer || latestRollPlayer || currentPlayer;
+  const board = document.getElementById('chinchiro-board');
+  const rollButton = document.getElementById('chinchiro-roll-btn');
+  const holdButton = document.getElementById('chinchiro-hold-btn');
+  const dice = animatedDiceResult || latestRoll?.dice || displayedPlayer?.dice || [];
+  const visibleRollsUsed = latestRoll?.rollNumber || displayedPlayer?.rollsUsed || 0;
+  const currentRollsUsed = currentPlayer?.rollsUsed || 0;
+
+  document.querySelector('.table-stage').style.display = 'none';
+  document.querySelector('.turn-control-section').style.display = 'none';
+  document.querySelector('.hand-section').style.display = 'none';
+  board.style.display = 'block';
+  document.getElementById('chinchiro-round').textContent = `${data.completedRounds || 0} ラウンド終了`;
+  document.getElementById('chinchiro-turn-status').textContent = data.status === 'finished'
+    ? '全員の役が確定しました。次のラウンドを始められます。'
+    : isMyTurn
+      ? 'あなたの番です。3個のサイコロを振ってください。'
+      : `${currentPlayer?.name || '相手'}の番です`;
+  document.getElementById('chinchiro-dice').innerHTML = Array.from({ length: 3 }, (_, index) => {
+    const face = dice[index] || '·';
+    return `<span class="chinchiro-die${dice.length ? ' has-result' : ''}" aria-label="${face}の目">${face}</span>`;
+  }).join('');
+  if (!isDiceRollAnimating) renderBowlDice(dice);
+  document.getElementById('chinchiro-hand-label').textContent = latestRoll?.label
+    || displayedPlayer?.chinchiroHand?.label
+    || 'サイコロを振ってください';
+  document.getElementById('chinchiro-roll-count').textContent = `${visibleRollsUsed} / 3 回`;
+  rollButton.disabled = !isMyTurn || currentRollsUsed >= 3 || isDiceRollAnimating;
+  holdButton.disabled = !isMyTurn || currentRollsUsed === 0 || isDiceRollAnimating;
+
+  const sortedPlayers = [...data.players].sort((left, right) => {
+    if (left.rank && right.rank) return left.rank - right.rank;
+    if (left.rank) return -1;
+    if (right.rank) return 1;
+    if (left.chinchiroFinished !== right.chinchiroFinished) return left.chinchiroFinished ? -1 : 1;
+    return left.name.localeCompare(right.name, 'ja');
+  });
+  document.getElementById('chinchiro-player-list').innerHTML = sortedPlayers.map(player => {
+    const isRolling = isDiceRollAnimating && player.id === animatedChinchiroPlayerId;
+    const status = isRolling
+      ? '振っています…'
+      : data.status === 'finished'
+      ? `${player.rank}位`
+      : player.chinchiroFinished
+        ? '確定'
+        : player.rollsUsed > 0
+          ? `${player.rollsUsed}/3回`
+          : '待機';
+    const role = isRolling ? '振っています…' : player.chinchiroHand?.label || '—';
+    const roundPoints = player.roundPoints > 0 ? `+${player.roundPoints}` : '—';
+    return `
+      <div class="chinchiro-player-row ${player.id === currentPlayer?.id ? 'is-turn' : ''} ${player.id === currentSocketId ? 'is-me' : ''}">
+        <span class="chinchiro-player-name"><strong>${escapeHtml(player.name)}</strong>${player.id === currentSocketId ? '<small>あなた</small>' : ''}</span>
+        <span class="chinchiro-player-role">${escapeHtml(role)}</span>
+        <span class="chinchiro-player-points">${roundPoints}<small>今回</small></span>
+        <span class="chinchiro-player-total">${player.totalPoints || 0}<small>累計</small></span>
+        <span class="chinchiro-player-status">${status}</span>
+      </div>
+    `;
+  }).join('');
+
+  renderChinchiroHistory(data.chinchiroHistory || [], isDiceRollAnimating);
+
+  if (data.status === 'finished' && !isDiceRollAnimating) showGameFinished(data);
+}
+
+function rollChinchiro() {
+  if (!myRoomId || isDiceRollAnimating) return;
+  startChinchiroDiceAnimation();
+  socket.emit('roll-chinchiro', myRoomId);
+}
+
+function renderBowlDice(dice = []) {
+  const pipSlots = {
+    1: [4],
+    2: [0, 8],
+    3: [0, 4, 8],
+    4: [0, 2, 6, 8],
+    5: [0, 2, 4, 6, 8],
+    6: [0, 2, 3, 5, 6, 8]
+  };
+  document.querySelectorAll('.bowl-die').forEach((die, index) => {
+    const face = dice[index];
+    die.classList.toggle('is-empty', !pipSlots[face]);
+    die.setAttribute('aria-label', pipSlots[face] ? `${face}の目` : 'サイコロ');
+    if (!pipSlots[face]) {
+      die.innerHTML = '<span class="bowl-die-placeholder">?</span>';
+      return;
+    }
+    const activeSlots = new Set(pipSlots[face]);
+    die.innerHTML = Array.from({ length: 9 }, (_, slot) =>
+      `<i class="bowl-die-pip${activeSlots.has(slot) ? ' is-visible' : ''}"></i>`
+    ).join('');
+  });
+}
+
+function renderChinchiroHistory(history, isRolling) {
+  const list = document.getElementById('chinchiro-history-list');
+  const visibleHistory = [...history].slice(-12);
+  if (isRolling && visibleHistory.length > 0) visibleHistory.pop();
+  if (visibleHistory.length === 0) {
+    list.innerHTML = '<p class="chinchiro-history-empty">サイコロを振ると履歴が表示されます</p>';
+    return;
+  }
+
+  list.innerHTML = visibleHistory.reverse().map(entry => `
+    <div class="chinchiro-history-row">
+      <span class="chinchiro-history-round">R${entry.round}</span>
+      <strong class="chinchiro-history-player">${escapeHtml(entry.playerName)}</strong>
+      <span class="chinchiro-history-dice">${entry.dice.map(face => `<i>${face}</i>`).join('')}</span>
+      <span class="chinchiro-history-result"><strong>${escapeHtml(entry.label)}</strong><small>${entry.rollNumber}回目${entry.confirmed ? ' · 確定' : ''}</small></span>
+    </div>
+  `).join('');
+}
+
+function startChinchiroDiceAnimation(finalDice = null, playerId = null) {
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (isDiceRollAnimating) {
+    if (Array.isArray(finalDice)) animatedDiceResult = [...finalDice];
+    if (playerId) animatedChinchiroPlayerId = playerId;
+    if (reducedMotion && Array.isArray(finalDice)) renderBowlDice(finalDice);
+    return;
+  }
+  const dicePanel = document.querySelector('.chinchiro-dice-panel');
+  const bowl = document.getElementById('chinchiro-bowl');
+  if (!dicePanel || !bowl) return;
+
+  isDiceRollAnimating = true;
+  animatedChinchiroPlayerId = playerId || latestGameState?.turnPlayerId || null;
+  animatedDiceResult = Array.isArray(finalDice) ? [...finalDice] : null;
+  dicePanel.classList.add('is-rolling');
+  bowl.classList.remove('is-shaking');
+  void bowl.offsetWidth;
+  bowl.classList.add('is-shaking');
+
+  if (!reducedMotion) {
+    renderBowlDice(Array.from({ length: 3 }, () => Math.floor(Math.random() * 6) + 1));
+    diceRollAnimationInterval = setInterval(() => {
+      renderBowlDice(Array.from({ length: 3 }, () => Math.floor(Math.random() * 6) + 1));
+    }, 90);
+  }
+  const duration = CHINCHIRO_ROLL_ANIMATION_MS;
+  diceRollAnimationTimer = setTimeout(() => {
+    if (diceRollAnimationInterval) clearInterval(diceRollAnimationInterval);
+    diceRollAnimationInterval = null;
+    dicePanel.classList.remove('is-rolling');
+    bowl.classList.remove('is-shaking');
+    diceRollAnimationTimer = null;
+    isDiceRollAnimating = false;
+
+    const data = latestGameState;
+    const lastRoll = [...(data?.chinchiroHistory || [])].reverse()
+      .find(entry => entry.playerId === animatedChinchiroPlayerId);
+    renderBowlDice(animatedDiceResult || lastRoll?.dice || []);
+    animatedDiceResult = null;
+    animatedChinchiroPlayerId = null;
+    if (data?.gameType === 'chinchiro') updateUI(data);
+  }, duration);
+}
+
+function holdChinchiro() {
+  if (myRoomId) socket.emit('hold-chinchiro', myRoomId);
 }
 
 // --- ルール判定ヘルパー（スマートアシスト用） ---
@@ -1623,13 +1889,14 @@ function renderOverallRanking(listElement, roundsElement, data) {
   );
 
   roundsElement.innerText = data.completedRounds
-    ? `${data.completedRounds}戦終了 · 役職ポイント累計`
+    ? `${data.completedRounds}戦終了 · ${data.gameType === 'chinchiro' ? '順位ポイント' : '役職ポイント'}累計`
     : '1戦目 · 対局中';
   listElement.replaceChildren();
 
   players.forEach((player, index) => {
+    const isChinchiro = data.gameType === 'chinchiro';
     const row = document.createElement('div');
-    row.className = `overall-ranking-item ${player.id === currentSocketId ? 'is-me' : ''}`;
+    row.className = `overall-ranking-item ${isChinchiro ? 'is-chinchiro' : ''} ${player.id === currentSocketId ? 'is-me' : ''}`;
 
     const rank = document.createElement('span');
     rank.className = 'overall-rank-number';
@@ -1650,7 +1917,9 @@ function renderOverallRanking(listElement, roundsElement, data) {
     unit.textContent = 'pt';
     points.appendChild(unit);
 
-    row.append(rank, name, role, points);
+    row.append(rank, name);
+    if (!isChinchiro) row.appendChild(role);
+    row.appendChild(points);
     listElement.appendChild(row);
   });
 }
@@ -1673,6 +1942,31 @@ function toggleOverallRanking(forceOpen) {
   modal.style.display = 'flex';
 }
 
+function returnToRoomLobby() {
+  const room = latestGameState;
+  if (!room) {
+    myRoomId = '';
+    isHost = false;
+    clearRecoveryState();
+    resetToLobbyView();
+    return;
+  }
+
+  document.getElementById('lobby-container').style.display = 'block';
+  document.getElementById('game-container').style.display = 'none';
+  document.getElementById('game-finished-modal').style.display = 'none';
+  document.getElementById('rules-modal').style.display = 'none';
+  document.getElementById('overall-ranking-modal').style.display = 'none';
+  document.body.classList.remove('game-active', 'revolution-mode', 'chinchiro-mode');
+  document.documentElement.classList.remove('revolution-mode');
+  renderTurnCountdown(null);
+  resetViewportLayout();
+  clearSelectionState();
+  pendingExchangeSelection = null;
+  currentHand = [];
+  updateWaitingRoom(room);
+}
+
 function showGameFinished(data) {
   const modal = document.getElementById('game-finished-modal');
   document.getElementById('overall-ranking-modal').style.display = 'none';
@@ -1684,6 +1978,10 @@ function showGameFinished(data) {
   const overallRankingRounds = document.getElementById('overall-ranking-rounds');
   const nextGameBtn = document.getElementById('next-game-btn');
   const guestNextHint = document.getElementById('guest-next-hint');
+  const currentSocketId = socket.id || myId;
+  document.querySelector('.result-summary').textContent = data.gameType === 'chinchiro'
+    ? '今回の順位ポイントと累計スコア'
+    : '今回の順位と役職ポイント';
 
   const sortedPlayers = [...data.players].sort((a, b) => {
     if (a.rank && b.rank) return a.rank - b.rank;
@@ -1694,7 +1992,9 @@ function showGameFinished(data) {
 
   rankingList.innerHTML = sortedPlayers.map((p, idx) => {
     const rankTitle = p.rank ? `${p.rank}位` : `${idx + 1}位`;
-    const roundPoints = ROLE_POINTS[p.role] ?? 0;
+    const roundPoints = data.gameType === 'chinchiro'
+      ? (p.roundPoints || 0)
+      : (ROLE_POINTS[p.role] ?? 0);
     const roundPointsLabel = roundPoints > 0 ? `+${roundPoints}` : String(roundPoints);
     const isMe = p.id === currentSocketId;
     return `
@@ -1708,11 +2008,13 @@ function showGameFinished(data) {
 
   renderOverallRanking(overallRankingList, overallRankingRounds, data);
 
-  const currentSocketId = socket.id || myId;
   const amIHost = isHost || (data.hostId === currentSocketId);
 
   if (amIHost) {
     nextGameBtn.style.display = 'inline-block';
+    nextGameBtn.innerText = data.gameType === 'chinchiro'
+      ? '次のラウンドを開始'
+      : '次のゲームを開始（カード交換あり）';
     guestNextHint.style.display = 'none';
   } else {
     nextGameBtn.style.display = 'none';
@@ -1724,7 +2026,13 @@ function showGameFinished(data) {
 
 // Enterキーでの送信対応
 document.addEventListener('DOMContentLoaded', () => {
+  ['create-room-id', 'join-room-id'].forEach(id => {
+    const input = document.getElementById(id);
+    input?.addEventListener('input', () => sanitizeRoomIdInput(input));
+  });
+
   const createInputs = ['create-player-name', 'create-room-id'];
+  updateGameSetup();
   createInputs.forEach(id => {
     const el = document.getElementById(id);
     if (el) {

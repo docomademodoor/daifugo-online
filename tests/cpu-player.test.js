@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chooseCpuAction, chooseCpuExchangeCards } from '../src/game/cpuPlayer.js';
+import { chooseCpuAction, chooseCpuExchangeCards } from '../src/game/daifugo/cpuPlayer.js';
 
 const baseRules = {
   eightCut: true,
