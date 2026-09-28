@@ -1,6 +1,15 @@
 const { createDeck } = require('../utils/deck');
 const { isValidPlay, checkForbiddenFinish, countEffectiveRank } = require('./rules');
 const { applyCardEffects, checkMiyakoOchi } = require('./cardEffects');
+const {
+  createCpuPlayer,
+  createHumanPlayer,
+  createJoinRequest,
+  createRoomState,
+  consumeJoinRequest,
+  rebindPlayerConnection,
+  ROOM_STATUS
+} = require('../core/roomState');
 
 const ROLE_POINTS = {
   '大富豪': 2,
@@ -25,7 +34,12 @@ class RoomManager {
       return { success: false, message: 'その合言葉は既に使用されています。別の合言葉を指定してください。' };
     }
 
-    const newRoom = {
+    const hostPlayer = createHumanPlayer({
+      id: socket.id,
+      playerId: playerId || socket.id,
+      name: (playerName && playerName.trim()) || 'ホスト'
+    });
+    const newRoom = createRoomState({
       id: trimmedId,
       hostId: socket.id,
       rules: {
@@ -45,40 +59,25 @@ class RoomManager {
         forbiddenFinish: rules?.forbiddenFinish ?? true,
         includeJoker: rules?.includeJoker ?? true,
       },
-      players: [
-        {
-          id: socket.id,
-          playerId: playerId || socket.id,
-          name: (playerName && playerName.trim()) || 'ホスト',
-          hand: [],
-          isWinner: false,
-          rank: null,
-          role: null,
-          connected: true,
-          isCpu: false,
-          totalPoints: 0
-        }
-      ],
-      fieldCards: [],
-      turnIndex: 0,
-      passCount: 0,
-      lastPlayedIndex: 0,
-      status: 'waiting',
-      isRevolution: false,
-      isElevenBack: false,
-      lockedSuit: null,
-      lockedNumber: null,
-      actionMessage: 'ルームが作成されました',
-      winners: [],
-      previousRoles: null,
-      isLocked: false,
-      nextCpuNumber: 1,
-      completedRounds: 0,
-      firstTurnExemptPlayerId: null,
-      turnDeadlineAt: null,
-      pendingSideSelection: null,
-      joinRequests: {}
-    };
+      hostPlayer,
+      initialState: {
+        fieldCards: [],
+        turnIndex: 0,
+        passCount: 0,
+        lastPlayedIndex: 0,
+        isRevolution: false,
+        isElevenBack: false,
+        lockedSuit: null,
+        lockedNumber: null,
+        actionMessage: 'ルームが作成されました',
+        winners: [],
+        previousRoles: null,
+        completedRounds: 0,
+        firstTurnExemptPlayerId: null,
+        turnDeadlineAt: null,
+        pendingSideSelection: null
+      }
+    });
 
     this.rooms[trimmedId] = newRoom;
     return { success: true, room: newRoom };
@@ -97,28 +96,16 @@ class RoomManager {
 
     const existingPlayer = room.players.find(p => p.playerId === (playerId || socket.id));
     if (existingPlayer) {
-      const previousSocketId = existingPlayer.id;
-      existingPlayer.id = socket.id;
-      existingPlayer.connected = true;
-      existingPlayer.name = (playerName && playerName.trim()) || existingPlayer.name || `プレイヤー${room.players.length + 1}`;
-      if (room.hostId === previousSocketId) {
-        room.hostId = socket.id;
-      }
-      if (room.exchangeRequirements?.[previousSocketId] !== undefined) {
-        room.exchangeRequirements[socket.id] = room.exchangeRequirements[previousSocketId];
-        delete room.exchangeRequirements[previousSocketId];
-      }
-      if (room.exchangeSelections?.[previousSocketId]) {
-        room.exchangeSelections[socket.id] = room.exchangeSelections[previousSocketId];
-        delete room.exchangeSelections[previousSocketId];
-      }
-      if (room.pendingSideSelection?.playerId === previousSocketId) {
-        room.pendingSideSelection.playerId = socket.id;
-      }
+      rebindPlayerConnection(
+        room,
+        existingPlayer,
+        socket.id,
+        (playerName && playerName.trim()) || existingPlayer.name || `プレイヤー${room.players.length + 1}`
+      );
       return { success: true, room, playerId: existingPlayer.playerId };
     }
 
-    if (room.status !== 'waiting') {
+    if (room.status !== ROOM_STATUS.WAITING) {
       return { success: false, message: 'このゲームは現在プレイ中です' };
     }
 
@@ -173,14 +160,12 @@ class RoomManager {
       .find(request => request.playerId === stablePlayerId);
     if (existingRequest) return { success: true, request: existingRequest };
 
-    const requestId = `join-${Date.now()}-${socket.id}`;
-    const request = {
-      requestId,
+    const request = createJoinRequest({
       socketId: socket.id,
       playerId: stablePlayerId,
       playerName: (playerName && playerName.trim()) || `プレイヤー${room.players.length + 1}`
-    };
-    room.joinRequests[requestId] = request;
+    });
+    room.joinRequests[request.requestId] = request;
     return { success: true, request, hostId: room.hostId };
   }
 
@@ -193,20 +178,16 @@ class RoomManager {
     if (room.players.length >= 8) return { success: false, message: 'ルームが満員です。' };
 
     const player = {
-      id: request.socketId,
-      playerId: request.playerId,
-      name: request.playerName,
-      hand: [],
-      isWinner: false,
-      rank: null,
+      ...createHumanPlayer({
+        id: request.socketId,
+        playerId: request.playerId,
+        name: request.playerName
+      }),
       role: '平民',
-      connected: true,
-      isCpu: false,
-      totalPoints: 0,
       isLateJoiner: true
     };
     room.players.push(player);
-    delete room.joinRequests[requestId];
+    consumeJoinRequest(room, requestId);
     room.actionMessage = `${player.name}が途中参加しました`;
     return { success: true, room, player };
   }
@@ -217,7 +198,7 @@ class RoomManager {
     if (room.hostId !== socketId) return { success: false, message: 'ホストのみ拒否できます。' };
     const request = room.joinRequests?.[requestId];
     if (!request) return { success: false, message: '参加申請が見つかりません。' };
-    delete room.joinRequests[requestId];
+    consumeJoinRequest(room, requestId);
     return { success: true, room, request };
   }
 
@@ -236,17 +217,7 @@ class RoomManager {
     const cpuId = `cpu-${room.id}-${cpuNumber}`;
     const cpuDifficulty = ['easy', 'normal', 'hard'].includes(difficulty) ? difficulty : 'normal';
     room.players.push({
-      id: cpuId,
-      playerId: cpuId,
-      name: `CPU ${cpuNumber}`,
-      hand: [],
-      isWinner: false,
-      rank: null,
-      role: null,
-      connected: true,
-      isCpu: true,
-      difficulty: cpuDifficulty,
-      totalPoints: 0
+      ...createCpuPlayer({ id: cpuId, name: `CPU ${cpuNumber}`, difficulty: cpuDifficulty })
     });
     room.actionMessage = `CPU ${cpuNumber}が参加しました`;
     return { success: true, room };
