@@ -59,10 +59,15 @@ describe('特殊効果テスト', () => {
       isElevenBack: false,
       lockedSuit: null,
       lockedNumber: null,
-      winners: []
+      winners: [],
+      players: [
+        { id: 'p1', name: 'A', hand: [] },
+        { id: 'p2', name: 'B', hand: [{ id: 'b1', suit: '♠', num: 3, strength: 3 }] },
+        { id: 'p3', name: 'C', hand: [{ id: 'c1', suit: '♦', num: 4, strength: 4 }] }
+      ]
     };
 
-    const currentPlayer = { name: 'A', hand: [] };
+    const currentPlayer = { name: 'A', hand: [], id: 'p1' };
     const playedCards = [
       { id: 'h8', suit: '♥', num: 8, strength: 8 },
       { id: 'd8', suit: '♦', num: 8, strength: 8 },
@@ -74,6 +79,42 @@ describe('特殊効果テスト', () => {
 
     expect(room.isRevolution).toBe(true);
     expect(result.actionLogs.join(' ')).toContain('革命');
+  });
+
+  it('5飛びは自分以外の人数分以上で自分のターンに戻る', () => {
+    const room = {
+      rules: {
+        eightCut: false,
+        revolution: false,
+        staircaseRevolution: false,
+        suitLock: false,
+        numberLock: false,
+        elevenBack: false,
+        fiveSkip: true,
+        tenDiscard: false,
+        sevenPass: false
+      },
+      fieldCards: [],
+      isRevolution: false,
+      isElevenBack: false,
+      lockedSuit: null,
+      lockedNumber: null,
+      winners: [],
+      players: [
+        { id: 'p1', name: 'A', hand: [{ id: 'a5', suit: '♠', num: 5, strength: 5 }] },
+        { id: 'p2', name: 'B', hand: [{ id: 'b1', suit: '♥', num: 7, strength: 7 }] },
+        { id: 'p3', name: 'C', hand: [{ id: 'c1', suit: '♦', num: 8, strength: 8 }] }
+      ]
+    };
+
+    const currentPlayer = room.players[0];
+    const result = applyCardEffects(room, currentPlayer, [
+      { id: 'a5', suit: '♠', num: 5, strength: 5 },
+      { id: 'a6', suit: '♣', num: 5, strength: 5 }
+    ], { valid: true });
+
+    expect(result.skipCount).toBe(3);
+    expect(result.actionLogs.join(' ')).toContain('5飛び');
   });
 
   it('10捨てで指定枚数だけ捨てられる', () => {

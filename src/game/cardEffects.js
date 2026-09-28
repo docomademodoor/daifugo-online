@@ -40,7 +40,7 @@ function applyCardEffects(room, currentPlayer, playedCards, validation) {
     return { clearField, skipCount, actionLogs };
   }
 
-  // 3-2. 階段革命判定 (一般的なローカルルール: 同スートの連番4枚以上で革命)
+  // 3-2. 階段革命判定 (一般的なローカルルール: 同じマークの連番4枚以上で革命)
   if (room.rules.staircaseRevolution && room.rules.staircase && playedCards.length >= 4) {
     const nonJokers = playedCards.filter(c => c.id !== 'JOKER');
     if (nonJokers.length >= 4) {
@@ -71,10 +71,14 @@ function applyCardEffects(room, currentPlayer, playedCards, validation) {
     );
   }
 
-  // 5. 5飛び (5を出した枚数分、次のプレイヤーをスキップ)
+  // 5. 5飛び
+  // 5の枚数が自分以外のアクティブ人数以上になったら、自分のターンに戻る。
   if (room.rules.fiveSkip && playedCards.some(c => c.num === 5)) {
-    skipCount = 1 + playedCards.length;
-    actionLogs.push(`【5飛び！】${playedCards.length}人スキップ！`);
+    const players = Array.isArray(room.players) ? room.players : [];
+    const otherActivePlayers = players.filter(p => p.id !== currentPlayer.id && p.hand.length > 0).length;
+    skipCount = Math.min(playedCards.length + 1, otherActivePlayers + 1);
+    const selfTurnNote = skipCount >= otherActivePlayers + 1 ? '（人数超過で自分の番に戻る）' : '';
+    actionLogs.push(`【5飛び！】${playedCards.length}枚分、${skipCount - 1}人スキップ${selfTurnNote}！`);
   }
 
   // 6. 10捨て (10を出した枚数分だけ、手札から不要なカードを破棄)
@@ -105,7 +109,7 @@ function applyCardEffects(room, currentPlayer, playedCards, validation) {
     }
   }
 
-  // 8. 連番縛り判定 (同スートの連番を出したら、その連番の範囲を含むカードで出させる)
+  // 8. 連番縛り判定 (同じマークの連番を出したら、その連番の範囲を含むカードで出させる)
   if (room.rules.numberLock && playedCards.length > 0) {
     const nonJokers = playedCards.filter(c => c.id !== 'JOKER');
     if (nonJokers.length >= 3) {

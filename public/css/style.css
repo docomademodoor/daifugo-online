@@ -13,6 +13,46 @@ body {
   flex-direction: column;
   align-items: center;
   padding: 15px;
+  transition: background 0.25s ease, color 0.25s ease;
+}
+
+body.revolution-mode {
+  background: radial-gradient(circle at center, #d9ffe5 0%, #7ae3a0 28%, #2f9f62 100%);
+  color: #0d2d1d;
+}
+
+body.revolution-mode .container,
+body.revolution-mode .rule-checkbox,
+body.revolution-mode .player-item,
+body.revolution-mode .room-info-card,
+body.revolution-mode .players-card,
+body.revolution-mode .status-banner,
+body.revolution-mode .turn-status-box,
+body.revolution-mode .hand-section,
+body.revolution-mode .field-section,
+body.revolution-mode .other-players-card,
+body.revolution-mode .modal-content,
+body.revolution-mode .rules-modal-item {
+  box-shadow: 0 0 18px rgba(18, 84, 52, 0.22);
+}
+
+body.revolution-mode .container {
+  background: rgba(255, 255, 255, 0.28);
+  border: 1px solid rgba(10, 53, 33, 0.22);
+}
+
+body.revolution-mode .status-banner.revolution {
+  background: linear-gradient(135deg, #0a4d2d, #22b573);
+  color: #ecfff5;
+  box-shadow: 0 0 20px rgba(8, 95, 52, 0.45);
+}
+
+body.revolution-mode .badge,
+body.revolution-mode .player-item,
+body.revolution-mode .rule-checkbox,
+body.revolution-mode .rules-modal-item {
+  background: rgba(10, 53, 33, 0.08);
+  border-color: rgba(9, 58, 36, 0.2);
 }
 
 .container {
@@ -77,10 +117,18 @@ h2, h3 {
 }
 
 /* タブUI */
+#lobby-form-area {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  align-items: center;
+}
+
 .tabs {
   display: flex;
   gap: 10px;
-  margin-bottom: 20px;
+  margin: 0 0 20px;
+  width: min(100%, 420px);
 }
 
 .tab-btn {

@@ -31,7 +31,7 @@
         </div>
         <div class="input-group">
           <label for="create-room-id">合言葉（ルームID）</label>
-          <input type="text" id="create-room-id" placeholder="例: daifugo-room" value="test">
+          <input type="text" id="create-room-id" placeholder="例: daifugo-room" value="00000">
         </div>
 
         <div class="rules-section">
@@ -40,31 +40,31 @@
           <div class="rules-grid">
             <label class="rule-checkbox">
               <input type="checkbox" id="rule-staircase" checked>
-              <span><strong>階段</strong><small>連番の並びを出せる</small></span>
+              <span><strong>階段</strong><small>同じマークの連番を出せる</small></span>
             </label>
             <label class="rule-checkbox">
               <input type="checkbox" id="rule-staircaseRevolution" checked>
-              <span><strong>階段革命</strong><small>革命時に階段を強く扱う</small></span>
+              <span><strong>階段革命</strong><small>同じマークの連番4枚で革命発動</small></span>
             </label>
             <label class="rule-checkbox">
               <input type="checkbox" id="rule-elevenBack" checked>
-              <span><strong>Jバック</strong><small>Jが出ている間、強さ一時反転</small></span>
+              <span><strong>Jバック</strong><small>Jを含む出し方で一時的に強さ逆転</small></span>
             </label>
             <label class="rule-checkbox">
               <input type="checkbox" id="rule-numberLock" checked>
-              <span><strong>連番縛り</strong><small>連続した数字の並びを優先する</small></span>
+              <span><strong>連番縛り</strong><small>連番を出したら、その範囲を含むカードで出す</small></span>
             </label>
             <label class="rule-checkbox">
               <input type="checkbox" id="rule-fiveSkip" checked>
-              <span><strong>5飛び</strong><small>5が出たら次の人をスキップ</small></span>
+              <span><strong>5飛び</strong><small>5を出すと飛ばし、人数超過時は自分の番に戻る</small></span>
             </label>
             <label class="rule-checkbox">
               <input type="checkbox" id="rule-sevenPass" checked>
-              <span><strong>7渡し</strong><small>7を出したら枚数分を次の人へ渡す</small></span>
+              <span><strong>7渡し</strong><small>7を出すと枚数分を次の人へ受け渡す</small></span>
             </label>
             <label class="rule-checkbox">
               <input type="checkbox" id="rule-tenDiscard" checked>
-              <span><strong>10捨て</strong><small>10が出たら手札を1枚破棄</small></span>
+              <span><strong>10捨て</strong><small>10を出すと手札から1枚捨てる</small></span>
             </label>
           </div>
         </div>
@@ -80,7 +80,7 @@
         </div>
         <div class="input-group">
           <label for="join-room-id">合言葉（ルームID）</label>
-          <input type="text" id="join-room-id" placeholder="合言葉を入力" value="test">
+          <input type="text" id="join-room-id" placeholder="合言葉を入力" value="00000">
         </div>
         <button class="primary-btn" onclick="joinRoom()">ルームに参加する</button>
       </div>
@@ -91,6 +91,10 @@
       <div class="room-info-card">
         <h2>合言葉: <span id="display-room-id" class="highlight-text"></span></h2>
         <div id="display-rules" class="rule-badges"></div>
+        <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap; margin-top: 12px;">
+          <button id="copy-room-id-btn" class="secondary-btn" type="button" onclick="copyRoomId()">ルームIDをコピー</button>
+          <button id="copy-room-link-btn" class="secondary-btn" type="button" onclick="copyRoomShareLink()">URLリンクをコピー</button>
+        </div>
       </div>
 
       <div class="players-card">

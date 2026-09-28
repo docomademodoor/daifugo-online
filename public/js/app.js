@@ -37,21 +37,21 @@ const RULE_LABELS = {
 };
 
 const RULE_DETAILS = {
-  eightCut: '8が出たら即座に場が流れる',
-  revolution: 'カードの強さが革命で逆転する',
-  suitLock: '同じマークだけで場を進行させる',
-  spe3: '♠3で場を返し、スペ3返しが発生する',
-  staircase: '連番の並びを出せるようにする',
-  staircaseRevolution: '革命時にも連番が強く扱われる',
-  elevenBack: 'Jが出ている間だけ、強さが逆転する',
-  numberLock: '連続した数字の並びを優先する',
-  fiveSkip: '5が出ると次の人をスキップする',
-  sevenPass: '7を出したら枚数分を次の人へ渡す',
-  tenDiscard: '10が出ると手札を1枚破棄する',
-  forbiddenFinish: '最後の1枚で上がる行為が禁止される',
-  miyakoOchi: '都落ちの条件がある',
-  dia3Start: '♢3を持つ人からゲームが始まる',
-  includeJoker: 'ジョーカーを含んだデッキでゲームを行う'
+  eightCut: '8を含む出し方で場を流す',
+  revolution: '4枚以上を同時に出すと、カードの強さが反転する',
+  suitLock: '同じマークのカードだけが続けて出せるようになる',
+  spe3: '♠3を使ってJOKERの場を返し、次の場を作り直す',
+  staircase: '同じマークの連番を出せる',
+  staircaseRevolution: '同じマークの連番4枚以上で革命を起こす',
+  elevenBack: 'Jを含む出し方で、場が流れるまで強さが逆転する',
+  numberLock: '同じマークの連番を出すと、その範囲を含むカードで出さなければならない',
+  fiveSkip: '5を含む出し方で飛ばし、人数超過時は自分の番に戻る',
+  sevenPass: '7を出すと次の人へ枚数分を受け渡す',
+  tenDiscard: '10を出すと、手札から1枚を捨てる',
+  forbiddenFinish: '最後の1枚で上がるのは禁止',
+  miyakoOchi: '前回の大富豪が失敗した場合、都落ちの判定が入る',
+  dia3Start: '♦3を持つ人からスタートする',
+  includeJoker: 'ジョーカーを含めてゲームを進行する'
 };
 
 const FIXED_RULE_KEYS = new Set([
@@ -320,6 +320,85 @@ socket.on('room-joined', (data) => {
   updateWaitingRoom(data.room);
 });
 
+function resetViewportLayout() {
+  const gameContainer = document.getElementById('game-container');
+
+  if (gameContainer) {
+    gameContainer.style.transform = 'none';
+    gameContainer.style.transformOrigin = '';
+    gameContainer.style.width = '';
+    gameContainer.style.margin = '';
+    gameContainer.style.maxWidth = '';
+    gameContainer.style.height = '';
+  }
+  document.body.style.overflow = 'auto';
+}
+
+function getRoomIdFromPath() {
+  const rawPath = window.location.pathname || '/';
+  const value = decodeURIComponent(rawPath.replace(/^\/+|\/+$/g, ''));
+  return value && value !== 'index.html' ? value : '';
+}
+
+function syncRoomIdInputFromUrl() {
+  const roomIdFromPath = getRoomIdFromPath();
+  if (!roomIdFromPath) return;
+
+  const createInput = document.getElementById('create-room-id');
+  const joinInput = document.getElementById('join-room-id');
+  if (createInput) createInput.value = roomIdFromPath;
+  if (joinInput) joinInput.value = roomIdFromPath;
+}
+
+async function copyTextToClipboard(text, successMessage) {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const helper = document.createElement('textarea');
+      helper.value = text;
+      helper.setAttribute('readonly', '');
+      helper.style.position = 'fixed';
+      helper.style.left = '-9999px';
+      document.body.appendChild(helper);
+      helper.select();
+      document.execCommand('copy');
+      document.body.removeChild(helper);
+    }
+
+    showError(successMessage);
+    setTimeout(() => {
+      clearError();
+    }, 1400);
+  } catch (error) {
+    console.error('コピー失敗:', error);
+    showError('コピーに失敗しました');
+  }
+}
+
+function copyRoomId() {
+  const roomId = myRoomId || document.getElementById('display-room-id')?.innerText?.trim() || '';
+  if (!roomId) {
+    showError('ルームIDが未設定です');
+    return;
+  }
+  copyTextToClipboard(roomId, 'ルームIDをコピーしました');
+}
+
+function copyRoomShareLink() {
+  const roomId = myRoomId || document.getElementById('create-room-id')?.value?.trim() || document.getElementById('join-room-id')?.value?.trim() || '';
+  if (!roomId) {
+    showError('共有するルームIDがありません');
+    return;
+  }
+
+  const url = new URL(window.location.href);
+  url.pathname = '/' + encodeURIComponent(roomId);
+  url.search = '';
+  url.hash = '';
+  copyTextToClipboard(url.toString(), '共有URLをコピーしました');
+}
+
 function resetToLobbyView() {
   const lobbyContainer = document.getElementById('lobby-container');
   const waitingArea = document.getElementById('waiting-area');
@@ -330,18 +409,16 @@ function resetToLobbyView() {
 
   if (lobbyContainer) lobbyContainer.style.display = 'block';
   if (waitingArea) waitingArea.style.display = 'none';
-  if (lobbyFormArea) lobbyFormArea.style.display = 'flex';
+  if (lobbyFormArea) {
+    lobbyFormArea.style.display = 'flex';
+    lobbyFormArea.style.flexDirection = 'column';
+    lobbyFormArea.style.width = '100%';
+  }
   if (gameContainer) gameContainer.style.display = 'none';
   if (gameFinishedModal) gameFinishedModal.style.display = 'none';
   if (rulesModal) rulesModal.style.display = 'none';
 
-  document.body.style.overflow = 'auto';
-  if (gameContainer) {
-    gameContainer.style.transform = 'none';
-    gameContainer.style.width = '';
-    gameContainer.style.margin = '';
-    gameContainer.style.transformOrigin = '';
-  }
+  resetViewportLayout();
 
   clearSelectionState();
   pendingExchangeSelection = null;
@@ -371,6 +448,7 @@ function updateWaitingRoom(room) {
   document.getElementById('lobby-form-area').style.display = 'none';
   document.getElementById('waiting-area').style.display = 'block';
 
+  myRoomId = room.roomId;
   document.getElementById('display-room-id').innerText = room.roomId;
   document.getElementById('player-count').innerText = room.players.length;
 
@@ -599,14 +677,19 @@ function updateUI(data) {
   const statusBanner = document.getElementById('game-status-banner');
   const statusMessages = [];
 
+  const body = document.body;
+
   if (data.status === 'waiting-exchange') {
     statusMessages.push('カード交換中');
     statusBanner.classList.remove('revolution');
+    body.classList.remove('revolution-mode');
   } else if (data.isRevolution) {
     statusMessages.push('革命');
     statusBanner.classList.add('revolution');
+    body.classList.add('revolution-mode');
   } else {
     statusBanner.classList.remove('revolution');
+    body.classList.remove('revolution-mode');
   }
   if (data.isElevenBack) {
     statusMessages.push('Jバック');
@@ -724,7 +807,7 @@ function isValidCombination(cards, rules = {}) {
     return { valid: true };
   }
 
-  return { valid: false, message: '複数枚出す場合は、同じ数字か、同スートの連番の組み合わせにしてください' };
+  return { valid: false, message: '複数枚出す場合は、同じ数字か、同じマークの連番の組み合わせにしてください' };
 }
 
 function getPlayStrength(cards) {
@@ -1323,6 +1406,8 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   window.addEventListener('resize', applyViewportFit);
-
+window.addEventListener('load', () => {
+  syncRoomIdInputFromUrl();
+});
   restoreRecoveryState();
 });

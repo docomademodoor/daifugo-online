@@ -12,6 +12,13 @@ const io = new Server(server, {
 
 app.use(express.static(path.join(__dirname, '../public')));
 
+app.get('*', (req, res) => {
+  if (req.path.startsWith('/css/') || req.path.startsWith('/js/') || req.path.startsWith('/socket.io')) {
+    return res.status(404).end();
+  }
+  res.sendFile(path.join(__dirname, '../public/index.html'));
+});
+
 io.on('connection', (socket) => {
   console.log('ユーザー接続:', socket.id);
 

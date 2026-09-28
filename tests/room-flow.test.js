@@ -82,9 +82,13 @@ describe('Card effects', () => {
       isElevenBack: false,
       lockedSuit: null,
       lockedNumber: null,
-      winners: []
+      winners: [],
+      players: [
+        { id: 'p1', name: 'A', hand: [{ id: 'a1', suit: '♥', num: 7, strength: 7 }] },
+        { id: 'p2', name: 'B', hand: [{ id: 'b1', suit: '♠', num: 8, strength: 8 }] }
+      ]
     };
-    const currentPlayer = { name: 'B', hand: [] };
+    const currentPlayer = { id: 'p2', name: 'B', hand: [{ id: 'b1', suit: '♠', num: 8, strength: 8 }] };
     const result = applyCardEffects(room, currentPlayer, [{ id: 's5', suit: '♠', num: 5, strength: 5 }], { valid: true });
 
     expect(result.skipCount).toBe(2);
