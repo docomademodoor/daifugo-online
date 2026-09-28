@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: online-daifugo
+    name: monNya-online-games
     env: node
     plan: free
     buildCommand: npm install
