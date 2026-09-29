@@ -129,6 +129,31 @@ function pickRandom(items, random) {
   return items[Math.min(items.length - 1, Math.floor(random() * items.length))];
 }
 
+function chooseStrongestPlay(choices, hand, room, rules, state, isReversed) {
+  const fieldCards = room.fieldCards || [];
+  const unseenCards = getUnseenCards(room, hand, rules);
+  const scoredChoices = choices.map(cards => ({
+    cards,
+    threats: countBeatingCandidates(cards, unseenCards, rules, state),
+    preservedGroups: getPreservedGroupScore(hand, cards),
+    strength: getPlayStrength(cards)
+  }));
+
+  scoredChoices.sort((left, right) => {
+    if (fieldCards.length === 0 && left.cards.length !== right.cards.length) {
+      return right.cards.length - left.cards.length;
+    }
+    if (left.threats !== right.threats) return left.threats - right.threats;
+    if (left.preservedGroups !== right.preservedGroups) {
+      return right.preservedGroups - left.preservedGroups;
+    }
+    const strengthDifference = left.strength - right.strength;
+    return isReversed ? -strengthDifference : strengthDifference;
+  });
+
+  return scoredChoices[0].cards;
+}
+
 function chooseCpuAction(room, player) {
   const hand = player.hand || [];
   const rules = room.rules || {};
@@ -173,25 +198,8 @@ function chooseCpuAction(room, player) {
   }
 
   if (difficulty === 'strongest') {
-    const unseenCards = getUnseenCards(room, hand, rules);
-    const scoredChoices = choices.map(cards => ({
-      cards,
-      threats: countBeatingCandidates(cards, unseenCards, rules, state),
-      preservedGroups: getPreservedGroupScore(hand, cards),
-      strength: getPlayStrength(cards)
-    }));
-    scoredChoices.sort((left, right) => {
-      if (fieldCards.length === 0 && left.cards.length !== right.cards.length) {
-        return right.cards.length - left.cards.length;
-      }
-      if (left.threats !== right.threats) return left.threats - right.threats;
-      if (left.preservedGroups !== right.preservedGroups) {
-        return right.preservedGroups - left.preservedGroups;
-      }
-      const strengthDifference = left.strength - right.strength;
-      return isReversed ? -strengthDifference : strengthDifference;
-    });
-    return buildPlayAction(scoredChoices[0].cards, hand, rules);
+    const cards = chooseStrongestPlay(choices, hand, room, rules, state, isReversed);
+    return buildPlayAction(cards, hand, rules);
   }
 
   choices.sort((left, right) => {

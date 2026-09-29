@@ -181,8 +181,8 @@
                 </select>
               </label>
               <div class="cpu-action-buttons">
-                <button id="add-cpu-btn" class="secondary-btn" type="button" onclick="addCpuPlayer()">CPUを1人追加</button>
-                <button id="remove-cpu-btn" class="secondary-btn" type="button" onclick="removeCpuPlayer()" disabled>CPUを1人削除</button>
+                <button id="add-cpu-btn" class="secondary-btn" type="button" onclick="addCpuPlayer()" aria-label="CPUを1人追加" title="CPUを1人追加">追加</button>
+                <button id="remove-cpu-btn" class="secondary-btn" type="button" onclick="removeCpuPlayer()" aria-label="CPUを1人削除" title="CPUを1人削除" disabled>削除</button>
               </div>
             </div>
           </section>
@@ -217,11 +217,6 @@
 
     <!-- ページ上部エラー表示バナー（アラートの代わり） -->
     <div id="game-error" class="error-banner" role="alert" aria-live="assertive" style="display:none;"></div>
-
-    <!-- 状況通知バナー（革命、11バック、縛りなど） -->
-    <div id="game-status-banner" class="status-banner" role="status" aria-live="polite" style="display:none;">
-      <div id="game-status-tags" class="game-status-tags"></div>
-    </div>
 
     <section id="chinchiro-board" class="chinchiro-board" style="display:none;" aria-labelledby="chinchiro-heading">
       <div class="chinchiro-board-header">
@@ -272,6 +267,9 @@
       <!-- 場 -->
       <div class="field-section">
         <div class="field-title">場</div>
+        <div id="game-status-banner" class="status-banner" role="status" aria-live="polite" style="display:none;">
+          <div id="game-status-tags" class="game-status-tags"></div>
+        </div>
         <div id="previous-field-card" class="previous-field-card" aria-hidden="true" style="display:none;"></div>
         <div id="field" class="field-cards"></div>
         <div id="suit-lock-indicator" class="lock-indicator" style="display:none;"></div>

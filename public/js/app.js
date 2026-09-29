@@ -412,12 +412,22 @@ function getOpponentSeatLayout(playerCount, index, stageWidth, seatWidth, stageH
     : preferredRowOffset;
   const x = rowCount === 1
     ? 50
-    : edgePercent + ((100 - edgePercent * 2) * rowIndex) / (rowCount - 1);
+    : edgePercent + ((100 - edgePercent * 2) * (isTopRow ? rowIndex : rowCount - rowIndex - 1)) / (rowCount - 1);
 
   return {
     x,
     y: isTopRow ? 50 - rowOffsetPercent : 50 + rowOffsetPercent
   };
+}
+
+function getClockwiseOpponentOrder(players, currentPlayerId) {
+  const currentPlayerIndex = players.findIndex(player => player.id === currentPlayerId);
+  if (currentPlayerIndex < 0) return players.filter(player => player.id !== currentPlayerId);
+
+  return [
+    ...players.slice(currentPlayerIndex + 1),
+    ...players.slice(0, currentPlayerIndex)
+  ];
 }
 
 socket.on('connect', () => {
@@ -1338,8 +1348,7 @@ function updateUI(data) {
 
   // 他プレイヤー情報
   const othersEl = document.getElementById('other-players');
-  const orderedOthers = data.players.filter(p => p.id !== currentSocketId);
-  const seatOrder = orderedOthers.length > 0 ? orderedOthers : [];
+  const seatOrder = getClockwiseOpponentOrder(data.players, currentSocketId);
   const seatLayoutPlayerCount = data.players.length;
   const tableStage = document.querySelector('.table-stage');
   const fieldSection = document.querySelector('.field-section');

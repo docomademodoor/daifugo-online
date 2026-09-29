@@ -153,6 +153,29 @@ h2, h3 {
   line-height: 1.2;
 }
 
+.field-section .status-banner {
+  width: 100%;
+  margin: 0 0 8px;
+  padding: 7px;
+  border: 1px solid rgba(241, 200, 75, 0.3);
+  border-radius: 8px;
+  background: rgba(11, 36, 20, 0.78);
+}
+
+.field-section .game-status-tags {
+  gap: 8px;
+}
+
+.field-section .game-status-tag {
+  min-height: 32px;
+  padding: 6px 12px;
+  border-color: rgba(241, 200, 75, 0.48);
+  background: rgba(57, 54, 26, 0.82);
+  color: #fff1a8;
+  font-size: 14px;
+  font-weight: 750;
+}
+
 .game-action-message {
   width: 100%;
   padding: 10px 14px;
@@ -835,9 +858,9 @@ input[type="text"]:focus {
 
 .host-cpu-actions {
   display: grid;
-  grid-template-columns: minmax(126px, 0.75fr) minmax(0, 1.25fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-height: 40px;
   margin-top: 10px;
 }
@@ -873,15 +896,18 @@ input[type="text"]:focus {
 .cpu-action-buttons {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
   min-height: 40px;
 }
 
 .cpu-action-buttons button,
 .room-management-actions button {
   min-height: 40px;
+  min-width: 0;
   flex: 1 1 auto;
-  padding: 8px 10px;
+  padding: 8px 6px;
   font-size: 12px;
+  white-space: nowrap;
 }
 
 .room-management-actions {
@@ -942,7 +968,7 @@ input[type="text"]:focus {
   }
 
   .host-cpu-actions {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
   }
 
   .host-cpu-actions.without-difficulty {
@@ -950,13 +976,20 @@ input[type="text"]:focus {
   }
 
   .cpu-difficulty-control {
-    max-width: 220px;
+    max-width: none;
+    gap: 5px;
   }
 
   .cpu-action-buttons,
   .room-management-actions {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px;
+  }
+
+  .cpu-action-buttons button {
+    padding-inline: 4px;
+    font-size: 11px;
   }
 }
 
@@ -2034,13 +2067,17 @@ input[type="text"]:focus {
 }
 
 .role-daifugo {
-  background: #f1c40f;
-  color: #795548;
+  border: 1px solid #fff0a3;
+  background: linear-gradient(135deg, #fff6b0 0%, #f5bd32 48%, #ffe888 100%);
+  color: #543904;
+  box-shadow: 0 0 8px rgba(255, 211, 74, 0.55);
 }
 
 .role-fugo {
-  background: #bdc3c7;
-  color: #2c3e50;
+  border: 1px solid #f4f7ff;
+  background: linear-gradient(135deg, #ffffff 0%, #bfc9d7 48%, #edf1f8 100%);
+  color: #273446;
+  box-shadow: 0 0 7px rgba(223, 234, 255, 0.42);
 }
 
 .role-heimin {
@@ -2049,13 +2086,15 @@ input[type="text"]:focus {
 }
 
 .role-hinmin {
-  background: #95a5a6;
-  color: white;
+  border: 1px solid #59616a;
+  background: linear-gradient(135deg, #4c545d, #242a30);
+  color: #d0d4d9;
 }
 
 .role-daihinmin {
-  background: #e74c3c;
-  color: white;
+  border: 1px solid #68404a;
+  background: linear-gradient(135deg, #47262f, #21181d);
+  color: #c7aab0;
 }
 
 /* 他プレイヤー状況 */
