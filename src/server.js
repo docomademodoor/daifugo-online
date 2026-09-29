@@ -18,7 +18,7 @@ const CPU_TURN_DELAY_MS = Math.max(0, Number(process.env.CPU_TURN_DELAY_MS) || 1
 const CHINCHIRO_CPU_INITIAL_DELAY_MS = Math.max(700, Number(process.env.CHINCHIRO_CPU_INITIAL_DELAY_MS) || 900);
 const CHINCHIRO_CPU_RESULT_HOLD_MS = Math.max(4000, Number(process.env.CHINCHIRO_CPU_RESULT_HOLD_MS) || 4000);
 const humanTurnTimers = new Map();
-const TURN_SELECTION_TIMEOUT_MS = Math.max(100, Number(process.env.TURN_SELECTION_TIMEOUT_MS) || 30000);
+const TURN_SELECTION_TIMEOUT_MS = Math.max(100, Number(process.env.TURN_SELECTION_TIMEOUT_MS) || 45000);
 const isValidRoomId = roomId => /^\d{5}$/.test(String(roomId || '').trim());
 
 app.use(express.static(path.join(__dirname, '../public')));
