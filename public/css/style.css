@@ -3345,6 +3345,19 @@ input[type="text"]:focus {
   }
 }
 
+@media (min-width: 381px) and (max-width: 420px) {
+  .hand-section.is-my-turn .hand-card {
+    width: 40px;
+    height: 60px;
+    flex-basis: 40px;
+    margin-right: -15px;
+  }
+
+  .hand-section.is-my-turn .hand-row--14 .hand-card {
+    margin-right: -18px;
+  }
+}
+
 @media (max-width: 380px) {
   .hand-section.is-waiting .hand-row .hand-card {
     margin-right: -20px;
@@ -3694,5 +3707,75 @@ input[type="text"]:focus {
   .room-chat-recent {
     flex-basis: min(280px, calc(100vw - 72px));
     width: min(280px, calc(100vw - 72px));
+  }
+}
+
+.hand-section.is-my-turn .hand-row .hand-card {
+  width: 55px;
+  height: 80px;
+  flex-basis: 55px;
+  margin-right: -13px;
+}
+
+@media (min-width: 641px) and (max-width: 700px) {
+  .hand-section.is-my-turn .hand-row .hand-card {
+    width: 48px;
+    height: 72px;
+    flex-basis: 48px;
+    margin-right: -11px;
+  }
+}
+
+@media (min-width: 531px) and (max-width: 640px) {
+  .hand-section.is-my-turn .hand-row .hand-card {
+    width: 42px;
+    height: 63px;
+    flex-basis: 42px;
+    margin-right: -10px;
+  }
+}
+
+@media (min-width: 481px) and (max-width: 530px) {
+  .hand-section.is-my-turn .hand-row .hand-card {
+    width: 38px;
+    height: 57px;
+    flex-basis: 38px;
+    margin-right: -9px;
+  }
+}
+
+@media (min-width: 421px) and (max-width: 480px) {
+  .hand-section.is-my-turn .hand-row .hand-card {
+    width: 34px;
+    height: 51px;
+    flex-basis: 34px;
+    margin-right: -8px;
+  }
+}
+
+@media (min-width: 381px) and (max-width: 420px) {
+  .hand-section.is-my-turn .hand-row .hand-card {
+    width: 30px;
+    height: 45px;
+    flex-basis: 30px;
+    margin-right: -7px;
+  }
+}
+
+@media (min-width: 341px) and (max-width: 380px) {
+  .hand-section.is-my-turn .hand-row .hand-card {
+    width: 26px;
+    height: 39px;
+    flex-basis: 26px;
+    margin-right: -6px;
+  }
+}
+
+@media (max-width: 340px) {
+  .hand-section.is-my-turn .hand-row .hand-card {
+    width: 24px;
+    height: 36px;
+    flex-basis: 24px;
+    margin-right: -5px;
   }
 }

@@ -122,6 +122,43 @@ describe('カードルール判定', () => {
     expect(isValidCombination(cards, { staircase: true }).valid).toBe(true);
   });
 
+  it('階段には同枚数のtripletやquadで返せない', () => {
+    const staircase3 = [3, 4, 5].map((num, index) => ({
+      id: `stairs3-${index}`,
+      suit: '♠',
+      num,
+      strength: num - 2
+    }));
+    const triplet = ['♥', '♦', '♣'].map((suit, index) => ({
+      id: `triplet-${index}`,
+      suit,
+      num: 8,
+      strength: 6
+    }));
+    const staircase4 = [3, 4, 5, 6].map((num, index) => ({
+      id: `stairs4-${index}`,
+      suit: '♥',
+      num,
+      strength: num - 2
+    }));
+    const quad = ['♠', '♥', '♦', '♣'].map(suit => ({
+      id: `quad-${suit}`,
+      suit,
+      num: 9,
+      strength: 7
+    }));
+    const strongerStaircase = [4, 5, 6].map((num, index) => ({
+      id: `higher-stairs-${index}`,
+      suit: '♦',
+      num,
+      strength: num - 2
+    }));
+
+    expect(isValidPlay(triplet, staircase3, { staircase: true }).valid).toBe(false);
+    expect(isValidPlay(quad, staircase4, { staircase: true }).valid).toBe(false);
+    expect(isValidPlay(strongerStaircase, staircase3, { staircase: true }).valid).toBe(true);
+  });
+
   it('マーク縛り中は違うマークを出せない', () => {
     const field = [
       { id: 's2', suit: '♠', num: 2, strength: 2 },

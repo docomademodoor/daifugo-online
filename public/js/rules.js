@@ -250,8 +250,13 @@
     const isReversed = (!!state.isRevolution) !== (!!state.isElevenBack);
     const playStrength = getPlayStrength(playedCards);
     const fieldStrength = getPlayStrength(fieldCards);
+      const fieldIsStaircase = !!rules.staircase && isStraightSequence(fieldCards);
+      const playIsStaircase = !!rules.staircase && isStraightSequence(playedCards);
 
-    if (rules.staircase && isStraightSequence(playedCards) && isStraightSequence(fieldCards)) {
+    if (fieldIsStaircase || playIsStaircase) {
+      if (!fieldIsStaircase || !playIsStaircase) {
+        return { valid: false, message: '階段には同じ枚数の階段で応じてください。' };
+      }
       const playHigh = getStraightHigh(playedCards);
       const fieldHigh = getStraightHigh(fieldCards);
       if (isReversed) {
