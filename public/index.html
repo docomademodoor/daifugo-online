@@ -243,7 +243,7 @@
           </div>
         </div>
         <div class="chinchiro-controls">
-          <button id="chinchiro-roll-btn" class="primary-btn" type="button" onclick="rollChinchiro(event)" onpointerdown="pressChinchiroRoll(event)" onpointerup="releaseChinchiroRoll(event)" onpointercancel="cancelChinchiroRoll()" onkeydown="pressChinchiroRoll(event)" onkeyup="releaseChinchiroRoll(event)">サイコロを振る</button>
+          <button id="chinchiro-roll-btn" class="primary-btn" type="button" onclick="rollChinchiro(event)" onpointerdown="pressChinchiroRoll(event)" onpointerup="releaseChinchiroRoll(event)" onpointercancel="cancelChinchiroRoll()" oncontextmenu="event.preventDefault()" onkeydown="pressChinchiroRoll(event)" onkeyup="releaseChinchiroRoll(event)">サイコロを振る</button>
           <button id="chinchiro-hold-btn" class="secondary-btn" type="button" onclick="holdChinchiro()">この役で確定</button>
         </div>
       </div>
@@ -407,6 +407,6 @@
   </div>
 
   <script src="/js/rules.js?v=1.0"></script>
-    <script src="/js/app.js?v=2.77"></script>
+    <script src="/js/app.js?v=2.78"></script>
 </body>
 </html>

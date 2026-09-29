@@ -1558,6 +1558,11 @@ function updateChinchiroUI(data) {
   const board = document.getElementById('chinchiro-board');
   const rollButton = document.getElementById('chinchiro-roll-btn');
   const holdButton = document.getElementById('chinchiro-hold-btn');
+  rollButton.textContent = isChinchiroRollPressed
+    ? '振っています…'
+    : chinchiroAwaitingRollResult
+      ? '目を確定中…'
+      : 'サイコロを振る';
   const dice = animatedDiceResult || displayedRoll?.dice || displayedPlayer?.dice || [];
   const visibleRollsUsed = displayedRoll?.rollNumber || displayedPlayer?.rollsUsed || 0;
   const currentRollsUsed = currentPlayer?.rollsUsed || 0;
@@ -1656,6 +1661,7 @@ function pressChinchiroRoll(event) {
 
   isChinchiroRollPressed = true;
   startChinchiroDiceAnimation(null, currentSocketId, true);
+  updateChinchiroUI(latestGameState);
 }
 
 function releaseChinchiroRoll(event) {
@@ -1666,8 +1672,7 @@ function releaseChinchiroRoll(event) {
 
   isChinchiroRollPressed = false;
   chinchiroAwaitingRollResult = true;
-  document.getElementById('chinchiro-roll-btn').disabled = true;
-  document.getElementById('chinchiro-hold-btn').disabled = true;
+  updateChinchiroUI(latestGameState);
   if (diceRollAnimationInterval) clearInterval(diceRollAnimationInterval);
   diceRollAnimationInterval = null;
   document.getElementById('chinchiro-bowl')?.classList.remove('is-shaking');
