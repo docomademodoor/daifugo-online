@@ -15,6 +15,11 @@ function getRankLabel(value) {
   return ({ 11: 'J', 12: 'Q', 13: 'K', 14: 'A', 15: '2' })[value] || String(value);
 }
 
+function getStrengthOrderMessage(room) {
+  const isReversed = (!!room.isRevolution) !== (!!room.isElevenBack);
+  return isReversed ? '強さ逆転、3が最強！' : '通常の強さ、2が最強！';
+}
+
 /**
  * カードプレイ時の特殊効果を判定して適用する
  * @param {Object} room - ルームオブジェクト
@@ -41,8 +46,8 @@ function applyCardEffects(room, currentPlayer, playedCards, validation, selectio
     room.isRevolution = !room.isRevolution;
     actionLogs.push(
       room.isRevolution
-        ? '【革命！】強さが逆転、3が最強！'
-        : '【革命返し！】通常の強さに戻りました！'
+        ? `【革命！】${getStrengthOrderMessage(room)}`
+        : `【革命返し！】${getStrengthOrderMessage(room)}`
     );
   }
 
@@ -72,8 +77,8 @@ function applyCardEffects(room, currentPlayer, playedCards, validation, selectio
       room.isRevolution = !room.isRevolution;
       actionLogs.push(
         room.isRevolution
-          ? '【階段革命！】カードの強さが反転しました。'
-          : '【階段革命解除！】通常の強さに戻りました。'
+          ? `【階段革命！】${getStrengthOrderMessage(room)}`
+          : `【階段革命解除！】${getStrengthOrderMessage(room)}`
       );
     }
   }
@@ -83,8 +88,8 @@ function applyCardEffects(room, currentPlayer, playedCards, validation, selectio
     room.isElevenBack = !room.isElevenBack;
     actionLogs.push(
       room.isElevenBack
-        ? '【Jバック！】場が流れるまで強さ逆転、3が最強！'
-        : '【Jバック解除！】通常に戻りました'
+        ? `【Jバック！】場が流れるまで${getStrengthOrderMessage(room)}`
+        : `【Jバック解除！】${getStrengthOrderMessage(room)}`
     );
   }
 

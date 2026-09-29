@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isValidCombination, isValidPlay } from '../public/js/rules.js';
+import { isCardSelectable, isValidCombination, isValidPlay } from '../public/js/rules.js';
 import RoomManager from '../src/game/roomManager.js';
 
 describe('カードルール判定', () => {
@@ -11,6 +11,65 @@ describe('カードルール判定', () => {
 
     const result = isValidPlay(cards, [], {}, {});
     expect(result.valid).toBe(true);
+  });
+
+  it('空場の階段は数字の異なるカードを段階的に選択できる', () => {
+    const hand = [
+      { id: 'spade-3', suit: '♠', num: '3', strength: 1 },
+      { id: 'spade-4', suit: '♠', num: '4', strength: 2 },
+      { id: 'spade-5', suit: '♠', num: '5', strength: 3 },
+      { id: 'heart-4', suit: '♥', num: '4', strength: 2 }
+    ];
+
+    expect(isCardSelectable(hand[1], hand, [hand[0]], [], { staircase: true })).toBe(true);
+    expect(isCardSelectable(hand[2], hand, hand.slice(0, 2), [], { staircase: true })).toBe(true);
+    expect(isCardSelectable(hand[3], hand, [hand[0]], [], { staircase: true })).toBe(false);
+  });
+
+  it('♦3必須は初回の♦3スタート手番だけに適用される', () => {
+    const roomId = 'dia3-stair-test';
+    RoomManager.rooms = {};
+    RoomManager.createRoom({ id: 'host' }, {
+      roomId,
+      playerName: 'A',
+      playerId: 'p1',
+      rules: { dia3Start: true, staircase: true }
+    });
+    RoomManager.joinRoom({ id: 'guest' }, {
+      roomId,
+      playerName: 'B',
+      playerId: 'p2'
+    });
+
+    const room = RoomManager.rooms[roomId];
+    const player = room.players[0];
+    room.status = 'playing';
+    room.turnIndex = 0;
+    room.previousRoles = null;
+    room.fieldCards = [];
+    room.firstTurnExemptPlayerId = player.id;
+    Object.assign(room.rules, {
+      eightCut: false,
+      fiveSkip: false,
+      tenDiscard: false,
+      sevenPass: false
+    });
+    player.hand = [
+      { id: '♦3', suit: '♦', num: '3', strength: 1 },
+      { id: '♠9', suit: '♠', num: '9', strength: 7 },
+      { id: '♠10', suit: '♠', num: '10', strength: 8 },
+      { id: '♠J', suit: '♠', num: 'J', strength: 9 }
+    ];
+    const staircase = player.hand.slice(1);
+
+    expect(RoomManager.getPublicState(room).mustPlayDiamondThree).toBe(true);
+    const openingPlay = RoomManager.playCards(player.id, { roomId, cards: staircase });
+    expect(openingPlay.success).toBe(false);
+    expect(openingPlay.message).toContain('♦3');
+
+    room.firstTurnExemptPlayerId = null;
+    expect(RoomManager.getPublicState(room).mustPlayDiamondThree).toBe(false);
+    expect(RoomManager.playCards(player.id, { roomId, cards: staircase }).success).toBe(true);
   });
 
   it('ジョーカーを階段の穴埋めに使える', () => {

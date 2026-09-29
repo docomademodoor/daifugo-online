@@ -1583,6 +1583,17 @@ function isStraightSequence(cards) {
   return span === values.length - 1;
 }
 
+function canCompleteStaircaseSelection(selectedCards, card) {
+  if (!latestGameState?.rules?.staircase) return false;
+  const candidate = [...selectedCards, card];
+  if (candidate.length >= 3) return isStraightSequence(candidate);
+
+  const selectedIds = new Set(candidate.map(selected => selected.id));
+  return currentHand.some(nextCard =>
+    !selectedIds.has(nextCard.id) && isStraightSequence([...candidate, nextCard])
+  );
+}
+
 function isValidCombination(cards, rules = {}) {
   if (!cards || cards.length === 0) return { valid: false, message: 'カードが選択されていません' };
   if (cards.length === 1) return { valid: true };
@@ -1617,7 +1628,7 @@ function isValidPlayClient(playedCards, fieldCards, rules = {}, state = {}) {
   if (!comboCheck.valid) return comboCheck;
 
   const hasDiamondThree = (currentHand || []).some(c => c.id === '♦3');
-  if (hasDiamondThree && !playedCards.some(c => c.id === '♦3')) {
+  if (state.mustPlayDiamondThree && hasDiamondThree && !playedCards.some(c => c.id === '♦3')) {
     return { valid: false, message: '♦3を持っている場合は、♦3を含むカードを出してください。' };
   }
 
@@ -1701,7 +1712,8 @@ function isCardSelectable(card) {
   const selectedCards = currentHand.filter(c => selectedCardIds.has(c.id));
 
   const hasDiamondThree = currentHand.some(c => c.id === '♦3');
-  if (hasDiamondThree && !selectedCards.some(c => c.id === '♦3') && card.id !== '♦3') {
+  if (latestGameState.mustPlayDiamondThree && hasDiamondThree
+    && !selectedCards.some(c => c.id === '♦3') && card.id !== '♦3') {
     return false;
   }
 
@@ -1779,7 +1791,7 @@ function isCardSelectable(card) {
   if (baseCard) {
     // 基準カードと同じ数字のみ選択可能
     if (card.num !== baseCard.num) {
-      return false;
+      return !targetCount && canCompleteStaircaseSelection(selectedCards, card);
     }
     if (targetCount && selectedCards.length + 1 === targetCount) {
       const candidate = [...selectedCards, card];

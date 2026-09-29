@@ -362,6 +362,40 @@ describe('特殊効果テスト', () => {
     expect(result.actionLogs.join(' ')).toContain('革命');
   });
 
+  it('革命中のJバックは合算後の最強数字を表示する', () => {
+    const room = {
+      rules: {
+        eightCut: false,
+        revolution: false,
+        staircaseRevolution: false,
+        suitLock: false,
+        numberLock: false,
+        elevenBack: true,
+        fiveSkip: false,
+        tenDiscard: false,
+        sevenPass: false
+      },
+      fieldCards: [{ id: 'field-4', suit: '♣', num: 4, strength: 2 }],
+      isRevolution: true,
+      isElevenBack: false,
+      lockedSuit: null,
+      lockedNumber: null,
+      passCount: 0,
+      winners: [],
+      players: [{ id: 'p1', hand: [] }, { id: 'p2', hand: [] }]
+    };
+    const player = { id: 'p1', name: 'A', hand: [] };
+
+    const result = applyCardEffects(room, player, [
+      { id: 'spade-J', suit: '♠', num: 'J', strength: 9 }
+    ], { valid: true });
+    const message = result.actionLogs.join(' ');
+
+    expect(room.isElevenBack).toBe(true);
+    expect(message).toContain('2が最強');
+    expect(message).not.toContain('3が最強');
+  });
+
   it('5飛びは自分以外の人数分以上で自分のターンに戻る', () => {
     const room = {
       rules: {

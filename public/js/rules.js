@@ -42,6 +42,17 @@
     return false;
   }
 
+  function canCompleteStaircaseSelection(selectedCards, card, hand, rules = {}) {
+    if (!rules.staircase) return false;
+    const candidate = [...selectedCards, card];
+    if (candidate.length >= 3) return isStraightSequence(candidate);
+
+    const selectedIds = new Set(candidate.map(selected => selected.id));
+    return hand.some(nextCard =>
+      !selectedIds.has(nextCard.id) && isStraightSequence([...candidate, nextCard])
+    );
+  }
+
   function getStraightHigh(cards) {
     const length = cards.length;
     const values = cards
@@ -371,7 +382,9 @@
     }
 
     if (baseCard) {
-      if (card.num !== baseCard.num) return false;
+      if (card.num !== baseCard.num) {
+        return !targetCount && canCompleteStaircaseSelection(selectedCards, card, hand, rules);
+      }
       if (targetCount && selectedCards.length + 1 === targetCount) {
         const candidate = [...selectedCards, card];
         return isValidPlay(candidate, currentField, rules, state).valid;

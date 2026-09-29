@@ -10,6 +10,14 @@ const ROLE_POINTS = {
   '大貧民': -2
 };
 
+function requiresDiamondThreeForOpeningPlay(room, player) {
+  return !!player
+    && room.rules.dia3Start !== false
+    && !room.previousRoles
+    && player.id === room.firstTurnExemptPlayerId
+    && player.hand.some(card => card.id === '♦3');
+}
+
 function startRound(roomManager, room) {
   room.fieldCards = [];
   room.passCount = 0;
@@ -71,6 +79,7 @@ function getPublicPlayerState(player) {
 }
 
 function getPublicState(room) {
+  const currentPlayer = room.players[room.turnIndex];
   return {
     fieldCards: room.fieldCards,
     isRevolution: room.isRevolution,
@@ -78,7 +87,8 @@ function getPublicState(room) {
     isReversed: (!!room.isRevolution) !== (!!room.isElevenBack),
     lockedSuit: room.lockedSuit,
     lockedNumber: room.lockedNumber,
-    exchangeRequirements: room.exchangeRequirements || {}
+    exchangeRequirements: room.exchangeRequirements || {},
+    mustPlayDiamondThree: requiresDiamondThreeForOpeningPlay(room, currentPlayer)
   };
 }
 
@@ -243,7 +253,8 @@ function playCards(roomManager, socketId, { roomId, cards, discardCards = [], pa
   const hasTenDiscard = room.rules.tenDiscard !== false && countEffectiveRank(playedCards, 10) > 0;
   const { pass: passRequired, discard: discardRequired } = getSideSelectionRequirements(room, currentPlayer, playedCards);
   const hasDiamondThree = currentPlayer.hand.some(card => card.id === '♦3');
-  if (hasDiamondThree && !playedCards.some(card => card.id === '♦3')) {
+  if (requiresDiamondThreeForOpeningPlay(room, currentPlayer)
+    && hasDiamondThree && !playedCards.some(card => card.id === '♦3')) {
     return { success: false, message: '♦3を持っている場合は、♦3を含むカードを出してください。' };
   }
 
