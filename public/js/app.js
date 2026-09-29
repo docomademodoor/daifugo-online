@@ -957,7 +957,9 @@ function updateWaitingRoom(room) {
     const isRoomHost = p.id === room.hostId;
     return `
       <div class="player-item ${isMe ? 'is-me' : ''} ${p.isCpu ? 'is-cpu' : ''}">
-        <span>${escapeHtml(p.name)} ${p.isCpu ? `<span class="cpu-tag">${CPU_DIFFICULTY_LABELS[p.difficulty] || 'ふつう'}</span>` : getRoleBadge(p.role)} ${isMe ? '<strong>(あなた)</strong>' : ''}</span>
+        <span>${escapeHtml(p.name)} ${p.isCpu
+          ? room.gameType === 'daifugo' ? `<span class="cpu-tag">${CPU_DIFFICULTY_LABELS[p.difficulty] || 'ふつう'}</span>` : ''
+          : getRoleBadge(p.role)} ${isMe ? '<strong>(あなた)</strong>' : ''}</span>
         ${isRoomHost ? '<span class="host-tag">ホスト</span>' : ''}
       </div>
     `;
