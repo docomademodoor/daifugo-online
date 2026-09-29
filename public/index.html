@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;500;700;800&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=3.70">
+  <link rel="stylesheet" href="/css/style.css?v=3.74">
   <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
@@ -65,7 +65,7 @@
                 <span class="game-choice-copy">
                   <strong>チンチロ</strong>
                   <small>3個のサイコロで役を競う</small>
-                  <span class="game-choice-meta">最大10人</span>
+                  <span class="game-choice-meta">最大8人</span>
                 </span>
                 <span class="game-choice-indicator" aria-hidden="true"></span>
               </span>
@@ -243,23 +243,19 @@
           </div>
         </div>
         <div class="chinchiro-controls">
-          <button id="chinchiro-roll-btn" class="primary-btn" type="button" onclick="rollChinchiro()">サイコロを振る</button>
+          <button id="chinchiro-roll-btn" class="primary-btn" type="button" onclick="rollChinchiro(event)" onpointerdown="pressChinchiroRoll(event)" onpointerup="releaseChinchiroRoll(event)" onpointercancel="cancelChinchiroRoll()" onkeydown="pressChinchiroRoll(event)" onkeyup="releaseChinchiroRoll(event)">サイコロを振る</button>
           <button id="chinchiro-hold-btn" class="secondary-btn" type="button" onclick="holdChinchiro()">この役で確定</button>
         </div>
       </div>
       <section class="chinchiro-scoreboard" aria-labelledby="chinchiro-scoreboard-heading">
         <div class="chinchiro-scoreboard-header">
           <h3 id="chinchiro-scoreboard-heading">プレイヤー</h3>
-          <span>役 · 今回の点 · 累計</span>
+          <div class="chinchiro-scoreboard-actions">
+            <span>役 · 今回の点 · 累計</span>
+            <button id="chinchiro-history-open" class="secondary-btn chinchiro-history-open" type="button" onclick="toggleChinchiroHistory(true)">履歴</button>
+          </div>
         </div>
         <div id="chinchiro-player-list" class="chinchiro-player-list"></div>
-      </section>
-      <section class="chinchiro-history" aria-labelledby="chinchiro-history-heading">
-        <div class="chinchiro-history-header">
-          <h3 id="chinchiro-history-heading">履歴</h3>
-          <span>直近のロール</span>
-        </div>
-        <div id="chinchiro-history-list" class="chinchiro-history-list" role="log" aria-live="polite"></div>
       </section>
     </section>
 
@@ -352,6 +348,19 @@
     </div>
   </div>
 
+  <div id="chinchiro-history-modal" class="modal chinchiro-history-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="chinchiro-history-heading" onclick="if(event.target===this) toggleChinchiroHistory(false)">
+    <div class="modal-content chinchiro-history-modal-content">
+      <div class="rules-modal-header">
+        <div>
+          <h2 id="chinchiro-history-heading">チンチロ履歴</h2>
+          <p>直近のロール</p>
+        </div>
+        <button class="secondary-btn" type="button" onclick="toggleChinchiroHistory(false)">閉じる</button>
+      </div>
+      <div id="chinchiro-history-list" class="chinchiro-history-list" role="log" aria-live="polite"></div>
+    </div>
+  </div>
+
   <div id="join-request-modal" class="modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="join-request-title">
     <div class="modal-content join-request-content">
       <h2 id="join-request-title">途中参加の申請</h2>
@@ -398,6 +407,6 @@
   </div>
 
   <script src="/js/rules.js?v=1.0"></script>
-  <script src="/js/app.js?v=2.69"></script>
+    <script src="/js/app.js?v=2.77"></script>
 </body>
 </html>

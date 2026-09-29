@@ -6,13 +6,13 @@ describe('ゲームRegistry', () => {
   it('ゲーム定義を登録して最大人数を解決できる', () => {
     const registry = new GameRegistry([
       { id: 'daifugo', label: '大富豪', maxPlayers: 8 },
-      { id: 'chinchiro', label: 'チンチロ', maxPlayers: 10 }
+      { id: 'chinchiro', label: 'チンチロ', maxPlayers: 8 }
     ]);
 
     expect(registry.get('chinchiro')).toMatchObject({
       id: 'chinchiro',
       label: 'チンチロ',
-      maxPlayers: 10
+      maxPlayers: 8
     });
     expect(registry.list()).toHaveLength(2);
   });

@@ -33,19 +33,19 @@ function roll(room, socketId) {
   player.chinchiroHand = evaluateChinchiro(player.dice);
   player.rollsUsed++;
   const round = (room.completedRounds || 0) + 1;
+  const rollId = (room.chinchiroHistory.at(-1)?.id || 0) + 1;
   room.chinchiroHistory.push({
-    id: room.chinchiroHistory.length + 1,
+    id: rollId,
     round,
     playerId: player.id,
     playerName: player.name,
     dice: [...player.dice],
     label: player.chinchiroHand.label,
     rollNumber: player.rollsUsed,
-    confirmed: player.rollsUsed === 3
+    confirmed: false
   });
   if (room.chinchiroHistory.length > 60) room.chinchiroHistory.shift();
   room.actionMessage = `${player.name}：${player.chinchiroHand.label}（${player.rollsUsed}/3回目）`;
-  if (player.rollsUsed === 3) finishTurn(room, player);
   return { success: true, room };
 }
 

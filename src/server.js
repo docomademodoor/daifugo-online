@@ -145,7 +145,8 @@ function scheduleCpuTurn(roomId) {
     }
 
     if (currentRoom.gameType === 'chinchiro') {
-      const result = roomManager.performGameAction(currentPlayer.id, roomId, 'roll');
+      const action = currentPlayer.rollsUsed >= 3 ? 'hold' : 'roll';
+      const result = roomManager.performGameAction(currentPlayer.id, roomId, action);
       if (result.success) {
         result.room.chinchiroNextCpuTurnAt = Date.now() + CHINCHIRO_CPU_RESULT_HOLD_MS;
         io.to(roomId).emit('state-updated', roomManager.getPublicState(result.room));

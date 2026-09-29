@@ -3,7 +3,7 @@ const engine = require('./engine');
 module.exports = {
   id: 'chinchiro',
   label: 'チンチロ',
-  maxPlayers: 10,
+  maxPlayers: 8,
   createRules() {
     return {};
   },

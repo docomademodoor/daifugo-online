@@ -17,14 +17,22 @@ let turnCountdownInterval = null;
 let diceRollAnimationTimer = null;
 let diceRollAnimationInterval = null;
 let isDiceRollAnimating = false;
+let isChinchiroRollPressed = false;
+let chinchiroAwaitingRollResult = false;
+let ignoreNextChinchiroRollClick = false;
+let ignoreNextChinchiroRollClickTimer = null;
 let animatedChinchiroPlayerId = null;
 let animatedDiceResult = null;
+let revealedChinchiroRollId = null;
+let revealedChinchiroRollTimer = null;
 let errorTimer = null;
 let roomChatLoadedFor = '';
 let roomChatUnreadCount = 0;
 const TABLE_SEAT_GAP = 20;
 const CHINCHIRO_ROLL_ANIMATION_MS = 2000;
+const CHINCHIRO_RESULT_REVEAL_MS = 2500;
 const ROOM_CHAT_MAX_LENGTH = 200;
+let chinchiroResultTimer = null;
 
 function clearPreviousFieldCards() {
   if (previousFieldCardsTimer) clearTimeout(previousFieldCardsTimer);
@@ -1148,6 +1156,9 @@ function applyViewportFit() {
 
 socket.on('game-started', (data) => {
   console.log('ゲーム開始受信:', data);
+  clearRevealedChinchiroRoll();
+  if (chinchiroResultTimer) clearTimeout(chinchiroResultTimer);
+  chinchiroResultTimer = null;
   latestGameState = data;
   myRoomId = data.roomId;
   setRoomChatRoom(myRoomId);
@@ -1185,11 +1196,16 @@ socket.on('game-started', (data) => {
 // ゲーム状態更新
 socket.on('state-updated', (data) => {
   const oldFieldCards = latestGameState?.fieldCards || [];
-  const previousPlayers = new Map((latestGameState?.players || []).map(player => [player.id, player]));
-  const didRollChinchiroDice = data.gameType === 'chinchiro' && data.players.some(player => {
-    const previousPlayer = previousPlayers.get(player.id);
-    return previousPlayer && (player.rollsUsed || 0) > (previousPlayer.rollsUsed || 0);
-  });
+  const previousRollId = latestGameState?.chinchiroHistory?.at(-1)?.id || 0;
+  const latestChinchiroRoll = data.chinchiroHistory?.at(-1);
+  const didRollChinchiroDice = data.gameType === 'chinchiro'
+    && latestChinchiroRoll
+    && latestChinchiroRoll.id > previousRollId;
+  const animatedPlayer = data.players.find(player => player.id === animatedChinchiroPlayerId);
+  const didConfirmAnimatedRoll = data.gameType === 'chinchiro'
+    && isDiceRollAnimating
+    && !didRollChinchiroDice
+    && animatedPlayer?.chinchiroFinished;
   const newFieldCards = data.fieldCards || [];
   const clearedFieldCards = data.clearedFieldCards || [];
   const fieldChanged = oldFieldCards.length !== newFieldCards.length
@@ -1229,10 +1245,20 @@ socket.on('state-updated', (data) => {
 
   if (didRollChinchiroDice) {
     const latestRoll = data.chinchiroHistory?.at(-1);
-    startChinchiroDiceAnimation(latestRoll?.dice, latestRoll?.playerId);
+    const currentSocketId = socket.id || myId;
+    if (chinchiroAwaitingRollResult && latestRoll?.playerId === currentSocketId) {
+      chinchiroAwaitingRollResult = false;
+      isChinchiroRollPressed = false;
+      if (diceRollAnimationTimer) clearTimeout(diceRollAnimationTimer);
+      animatedDiceResult = [...latestRoll.dice];
+      finishChinchiroDiceAnimation(data);
+    } else {
+      startChinchiroDiceAnimation(latestRoll?.dice, latestRoll?.playerId);
+    }
   }
 
   latestGameState = data;
+  if (didConfirmAnimatedRoll) finishChinchiroDiceAnimation(data);
   clearSelectionState();
   if (data.status === 'waiting-exchange') {
     const requiredCount = data.exchangeRequirements?.[socket.id] || 0;
@@ -1502,21 +1528,38 @@ function updateChinchiroUI(data) {
   const currentRound = data.status === 'finished'
     ? data.completedRounds
     : (data.completedRounds || 0) + 1;
-  const latestRoll = [...(data.chinchiroHistory || [])]
-    .reverse()
-    .find(entry => entry.round === currentRound);
+  const roundHistory = (data.chinchiroHistory || [])
+    .filter(entry => entry.round === currentRound);
+  const latestRoll = roundHistory.at(-1);
   const latestRollPlayer = latestRoll
     ? data.players.find(player => player.id === latestRoll.playerId)
     : null;
   const animatedPlayer = isDiceRollAnimating && animatedChinchiroPlayerId
     ? data.players.find(player => player.id === animatedChinchiroPlayerId)
     : null;
-  const displayedPlayer = animatedPlayer || latestRollPlayer || currentPlayer;
+  const activePlayerRoll = currentPlayer
+    ? [...roundHistory].reverse().find(entry => entry.playerId === currentPlayer.id)
+    : null;
+  const revealedRoll = !animatedPlayer && revealedChinchiroRollId !== null
+    ? roundHistory.find(entry => entry.id === revealedChinchiroRollId)
+    : null;
+  const revealedPlayer = revealedRoll
+    ? data.players.find(player => player.id === revealedRoll.playerId)
+    : null;
+  const isShowingPreviousResult = !!revealedRoll
+    && !!revealedPlayer
+    && revealedPlayer.id !== currentPlayer?.id
+    && !activePlayerRoll;
+  const displayedPlayer = animatedPlayer
+    || (isShowingPreviousResult ? revealedPlayer : currentPlayer)
+    || latestRollPlayer;
+  const displayedRoll = [...roundHistory].reverse()
+    .find(entry => entry.playerId === displayedPlayer?.id && (!isShowingPreviousResult || entry.id === revealedRoll.id));
   const board = document.getElementById('chinchiro-board');
   const rollButton = document.getElementById('chinchiro-roll-btn');
   const holdButton = document.getElementById('chinchiro-hold-btn');
-  const dice = animatedDiceResult || latestRoll?.dice || displayedPlayer?.dice || [];
-  const visibleRollsUsed = latestRoll?.rollNumber || displayedPlayer?.rollsUsed || 0;
+  const dice = animatedDiceResult || displayedRoll?.dice || displayedPlayer?.dice || [];
+  const visibleRollsUsed = displayedRoll?.rollNumber || displayedPlayer?.rollsUsed || 0;
   const currentRollsUsed = currentPlayer?.rollsUsed || 0;
 
   document.querySelector('.table-stage').style.display = 'none';
@@ -1524,6 +1567,7 @@ function updateChinchiroUI(data) {
   document.querySelector('.hand-section').style.display = 'none';
   board.style.display = 'block';
   document.getElementById('chinchiro-round').textContent = `${data.completedRounds || 0} ラウンド終了`;
+  document.getElementById('chinchiro-history-open').textContent = `履歴 (${data.chinchiroHistory?.length || 0})`;
   document.getElementById('chinchiro-turn-status').textContent = data.status === 'finished'
     ? '全員の役が確定しました。次のラウンドを始められます。'
     : isMyTurn
@@ -1534,12 +1578,14 @@ function updateChinchiroUI(data) {
     return `<span class="chinchiro-die${dice.length ? ' has-result' : ''}" aria-label="${face}の目">${face}</span>`;
   }).join('');
   if (!isDiceRollAnimating) renderBowlDice(dice);
-  document.getElementById('chinchiro-hand-label').textContent = latestRoll?.label
-    || displayedPlayer?.chinchiroHand?.label
-    || 'サイコロを振ってください';
-  document.getElementById('chinchiro-roll-count').textContent = `${visibleRollsUsed} / 3 回`;
-  rollButton.disabled = !isMyTurn || currentRollsUsed >= 3 || isDiceRollAnimating;
-  holdButton.disabled = !isMyTurn || currentRollsUsed === 0 || isDiceRollAnimating;
+  document.getElementById('chinchiro-hand-label').textContent = isShowingPreviousResult
+    ? `${displayedPlayer.name}の前の結果：${displayedRoll.label}`
+    : displayedRoll?.label || displayedPlayer?.chinchiroHand?.label || 'サイコロを振ってください';
+  document.getElementById('chinchiro-roll-count').textContent = isShowingPreviousResult
+    ? `前の結果 ${visibleRollsUsed} / 3 回`
+    : `${visibleRollsUsed} / 3 回`;
+  rollButton.disabled = !isMyTurn || currentRollsUsed >= 3 || isDiceRollAnimating || isShowingPreviousResult;
+  holdButton.disabled = !isMyTurn || currentRollsUsed === 0 || isDiceRollAnimating || isShowingPreviousResult;
 
   const sortedPlayers = [...data.players].sort((left, right) => {
     if (left.rank && right.rank) return left.rank - right.rank;
@@ -1574,13 +1620,97 @@ function updateChinchiroUI(data) {
 
   renderChinchiroHistory(data.chinchiroHistory || [], isDiceRollAnimating);
 
-  if (data.status === 'finished' && !isDiceRollAnimating) showGameFinished(data);
+  if (data.status === 'finished') toggleChinchiroHistory(false);
+  if (data.status === 'finished' && !isDiceRollAnimating) {
+    if (chinchiroResultTimer) clearTimeout(chinchiroResultTimer);
+    chinchiroResultTimer = setTimeout(() => {
+      chinchiroResultTimer = null;
+      if (latestGameState?.gameType === 'chinchiro' && latestGameState.status === 'finished') {
+        showGameFinished(latestGameState);
+      }
+    }, CHINCHIRO_RESULT_REVEAL_MS);
+  } else if (chinchiroResultTimer) {
+    clearTimeout(chinchiroResultTimer);
+    chinchiroResultTimer = null;
+  }
 }
 
-function rollChinchiro() {
-  if (!myRoomId || isDiceRollAnimating) return;
-  startChinchiroDiceAnimation();
+function pressChinchiroRoll(event) {
+  const isKeyboardEvent = event?.type === 'keydown';
+  if (isKeyboardEvent && !['Enter', ' ', 'Spacebar'].includes(event.key)) return;
+  if (isKeyboardEvent && event.repeat) return;
+  event?.preventDefault?.();
+
+  if (event?.type === 'pointerdown' && event.currentTarget?.setPointerCapture) {
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+
+  const currentSocketId = socket.id || myId;
+  const currentPlayer = latestGameState?.players?.find(player => player.id === currentSocketId);
+  if (!myRoomId || !latestGameState || latestGameState.status !== 'playing'
+    || latestGameState.turnPlayerId !== currentSocketId
+    || currentPlayer?.rollsUsed >= 3
+    || isDiceRollAnimating
+    || revealedChinchiroRollId !== null
+    || chinchiroAwaitingRollResult) return;
+
+  isChinchiroRollPressed = true;
+  startChinchiroDiceAnimation(null, currentSocketId, true);
+}
+
+function releaseChinchiroRoll(event) {
+  const isKeyboardEvent = event?.type === 'keyup';
+  if (isKeyboardEvent && !['Enter', ' ', 'Spacebar'].includes(event.key)) return;
+  event?.preventDefault?.();
+  if (!isChinchiroRollPressed || !myRoomId) return;
+
+  isChinchiroRollPressed = false;
+  chinchiroAwaitingRollResult = true;
+  document.getElementById('chinchiro-roll-btn').disabled = true;
+  document.getElementById('chinchiro-hold-btn').disabled = true;
+  if (diceRollAnimationInterval) clearInterval(diceRollAnimationInterval);
+  diceRollAnimationInterval = null;
+  document.getElementById('chinchiro-bowl')?.classList.remove('is-shaking');
+
+  ignoreNextChinchiroRollClick = true;
+  if (ignoreNextChinchiroRollClickTimer) clearTimeout(ignoreNextChinchiroRollClickTimer);
+  ignoreNextChinchiroRollClickTimer = setTimeout(() => {
+    ignoreNextChinchiroRollClick = false;
+    ignoreNextChinchiroRollClickTimer = null;
+  }, 500);
+
+  if (diceRollAnimationTimer) clearTimeout(diceRollAnimationTimer);
+  diceRollAnimationTimer = setTimeout(() => {
+    if (!chinchiroAwaitingRollResult) return;
+    chinchiroAwaitingRollResult = false;
+    finishChinchiroDiceAnimation(latestGameState);
+    if (latestGameState?.gameType === 'chinchiro') updateUI(latestGameState);
+    showError('出目を受信できませんでした。もう一度お試しください。');
+  }, 8000);
+
   socket.emit('roll-chinchiro', myRoomId);
+}
+
+function cancelChinchiroRoll() {
+  if (!isChinchiroRollPressed) return;
+  isChinchiroRollPressed = false;
+  finishChinchiroDiceAnimation(latestGameState);
+  if (latestGameState?.gameType === 'chinchiro') updateUI(latestGameState);
+}
+
+window.addEventListener('blur', cancelChinchiroRoll);
+
+function rollChinchiro(event) {
+  if (ignoreNextChinchiroRollClick) {
+    ignoreNextChinchiroRollClick = false;
+    if (ignoreNextChinchiroRollClickTimer) clearTimeout(ignoreNextChinchiroRollClickTimer);
+    ignoreNextChinchiroRollClickTimer = null;
+    return;
+  }
+  if (isChinchiroRollPressed) return;
+
+  pressChinchiroRoll({ type: 'keydown', key: 'Enter', preventDefault() {} });
+  releaseChinchiroRoll({ type: 'keyup', key: 'Enter', preventDefault() {} });
 }
 
 function renderBowlDice(dice = []) {
@@ -1626,7 +1756,58 @@ function renderChinchiroHistory(history, isRolling) {
   `).join('');
 }
 
-function startChinchiroDiceAnimation(finalDice = null, playerId = null) {
+function toggleChinchiroHistory(forceOpen) {
+  const modal = document.getElementById('chinchiro-history-modal');
+  if (!modal) return;
+
+  const shouldOpen = forceOpen ?? modal.style.display !== 'flex';
+  if (!shouldOpen) {
+    modal.style.display = 'none';
+    return;
+  }
+
+  if (modal.parentElement !== document.body) document.body.appendChild(modal);
+  renderChinchiroHistory(latestGameState?.chinchiroHistory || [], false);
+  modal.style.display = 'flex';
+}
+
+function clearRevealedChinchiroRoll() {
+  if (revealedChinchiroRollTimer) clearTimeout(revealedChinchiroRollTimer);
+  revealedChinchiroRollTimer = null;
+  revealedChinchiroRollId = null;
+}
+
+function finishChinchiroDiceAnimation(data = latestGameState) {
+  if (diceRollAnimationInterval) clearInterval(diceRollAnimationInterval);
+  if (diceRollAnimationTimer) clearTimeout(diceRollAnimationTimer);
+  diceRollAnimationInterval = null;
+  diceRollAnimationTimer = null;
+  document.querySelector('.chinchiro-dice-panel')?.classList.remove('is-rolling');
+  document.getElementById('chinchiro-bowl')?.classList.remove('is-shaking');
+
+  const animatedPlayerId = animatedChinchiroPlayerId;
+  const currentRound = data?.status === 'finished'
+    ? data.completedRounds
+    : (data?.completedRounds || 0) + 1;
+  const lastRoll = [...(data?.chinchiroHistory || [])].reverse()
+    .find(entry => entry.round === currentRound && entry.playerId === animatedPlayerId);
+  renderBowlDice(animatedDiceResult || lastRoll?.dice || []);
+  animatedDiceResult = null;
+  animatedChinchiroPlayerId = null;
+  isDiceRollAnimating = false;
+
+  if (data?.status === 'playing' && lastRoll && data.turnPlayerId !== animatedPlayerId) {
+    clearRevealedChinchiroRoll();
+    revealedChinchiroRollId = lastRoll.id;
+    revealedChinchiroRollTimer = setTimeout(() => {
+      clearRevealedChinchiroRoll();
+      if (latestGameState?.gameType === 'chinchiro') updateUI(latestGameState);
+    }, CHINCHIRO_RESULT_REVEAL_MS);
+  }
+}
+
+function startChinchiroDiceAnimation(finalDice = null, playerId = null, waitForServerResult = false) {
+  clearRevealedChinchiroRoll();
   const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if (isDiceRollAnimating) {
     if (Array.isArray(finalDice)) animatedDiceResult = [...finalDice];
@@ -1652,27 +1833,17 @@ function startChinchiroDiceAnimation(finalDice = null, playerId = null) {
       renderBowlDice(Array.from({ length: 3 }, () => Math.floor(Math.random() * 6) + 1));
     }, 90);
   }
-  const duration = CHINCHIRO_ROLL_ANIMATION_MS;
-  diceRollAnimationTimer = setTimeout(() => {
-    if (diceRollAnimationInterval) clearInterval(diceRollAnimationInterval);
-    diceRollAnimationInterval = null;
-    dicePanel.classList.remove('is-rolling');
-    bowl.classList.remove('is-shaking');
-    diceRollAnimationTimer = null;
-    isDiceRollAnimating = false;
-
-    const data = latestGameState;
-    const lastRoll = [...(data?.chinchiroHistory || [])].reverse()
-      .find(entry => entry.playerId === animatedChinchiroPlayerId);
-    renderBowlDice(animatedDiceResult || lastRoll?.dice || []);
-    animatedDiceResult = null;
-    animatedChinchiroPlayerId = null;
-    if (data?.gameType === 'chinchiro') updateUI(data);
-  }, duration);
+  if (!waitForServerResult) {
+    diceRollAnimationTimer = setTimeout(() => {
+      const data = latestGameState;
+      finishChinchiroDiceAnimation(data);
+      if (data?.gameType === 'chinchiro') updateUI(data);
+    }, CHINCHIRO_ROLL_ANIMATION_MS);
+  }
 }
 
 function holdChinchiro() {
-  if (myRoomId) socket.emit('hold-chinchiro', myRoomId);
+  if (myRoomId && revealedChinchiroRollId === null) socket.emit('hold-chinchiro', myRoomId);
 }
 
 function isValidPlayClient(playedCards, fieldCards, rules = {}, state = {}) {
@@ -2200,7 +2371,9 @@ function showGameFinished(data) {
       <div class="ranking-item rank-${p.rank || idx + 1}${isMe ? ' is-me' : ''}${data.gameType === 'chinchiro' ? ' is-chinchiro' : ''}">
         <span class="ranking-place">${rankTitle}</span>
         <span class="ranking-player"><strong>${escapeHtml(p.name)}</strong></span>
-        ${data.gameType === 'chinchiro' ? '' : `<span class="ranking-role">${getRoleBadge(p.role)}</span>`}
+        ${data.gameType === 'chinchiro'
+          ? `<span class="ranking-role"><span class="chinchiro-result-badge">${escapeHtml(p.chinchiroHand?.label || p.role || '—')}</span></span>`
+          : `<span class="ranking-role">${getRoleBadge(p.role)}</span>`}
         <span class="ranking-result-meta"><strong>${roundPointsLabel}</strong><small>pt</small></span>
       </div>
     `;
