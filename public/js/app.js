@@ -31,6 +31,8 @@ function clearPreviousFieldCards() {
   previousFieldCardsTimer = null;
   previousFieldCards = [];
   document.getElementById('previous-field-card')?.classList.remove('is-recent-clear');
+  document.getElementById('field')?.classList.remove('is-recent-clear');
+  document.getElementById('field')?.classList.remove('is-large-group');
 }
 
 function clearSelectionState() {
@@ -583,22 +585,38 @@ function showJoinRequestModal(mode, data) {
   const title = document.getElementById('join-request-title');
   const message = document.getElementById('join-request-message');
   const actions = document.getElementById('join-request-actions');
-  if (!modal || !title || !message || !actions) return;
+  const notice = document.getElementById('join-request-notice');
+  const noticeMessage = document.getElementById('join-request-notice-message');
+  const noticeActions = document.getElementById('join-request-notice-actions');
+  if (!modal || !title || !message || !actions || !notice || !noticeMessage || !noticeActions) return;
 
   activeJoinRequest = data;
   title.innerText = mode === 'host' ? '途中参加の申請' : '途中参加を申請しました';
-  message.innerText = mode === 'host'
+  const requestMessage = mode === 'host'
     ? `${data.playerName} さんが途中参加を希望しています。`
     : data.message;
+  message.innerText = requestMessage;
   actions.innerHTML = mode === 'host'
     ? '<button class="primary-btn" type="button" onclick="approveJoinRequest()">許可</button><button class="secondary-btn" type="button" onclick="rejectJoinRequest()">拒否</button>'
     : '<button class="secondary-btn" type="button" onclick="closeJoinRequestModal()">閉じる</button>';
+
+  if (mode === 'host' && document.body.classList.contains('game-active')) {
+    noticeMessage.textContent = requestMessage;
+    noticeActions.innerHTML = '<button class="primary-btn" type="button" onclick="approveJoinRequest()">許可</button><button class="secondary-btn" type="button" onclick="rejectJoinRequest()">拒否</button>';
+    notice.hidden = false;
+    modal.style.display = 'none';
+    return;
+  }
+
+  notice.hidden = true;
   modal.style.display = 'flex';
 }
 
 function closeJoinRequestModal() {
   const modal = document.getElementById('join-request-modal');
+  const notice = document.getElementById('join-request-notice');
   if (modal) modal.style.display = 'none';
+  if (notice) notice.hidden = true;
   activeJoinRequest = null;
 }
 
@@ -1191,6 +1209,12 @@ socket.on('state-updated', (data) => {
         previousFieldCardsTimer = null;
         if ((latestGameState?.fieldCards || []).length > 0) return;
         previousFieldCards = [];
+        const fieldEl = document.getElementById('field');
+        if (fieldEl) {
+          fieldEl.innerHTML = '<span style="color: #bbb;">（場は流れています。好きなカードを出せます）</span>';
+          fieldEl.classList.remove('is-recent-clear');
+          fieldEl.classList.remove('is-large-group');
+        }
         const previousFieldEl = document.getElementById('previous-field-card');
         if (previousFieldEl) {
           previousFieldEl.innerHTML = '';
@@ -1362,19 +1386,25 @@ function updateUI(data) {
   // 場のカード表示
   const fieldEl = document.getElementById('field');
   const previousFieldEl = document.getElementById('previous-field-card');
+  const displayedFieldCards = data.fieldCards?.length > 0 ? data.fieldCards : previousFieldCards;
+  fieldEl.classList.toggle('is-large-group', displayedFieldCards.length > 4);
   if (data.fieldCards && data.fieldCards.length > 0) {
     fieldEl.innerHTML = data.fieldCards.map(c => renderCard(c, false)).join('');
+    fieldEl.classList.remove('is-recent-clear');
     if (previousFieldEl) {
       previousFieldEl.innerHTML = previousFieldCards.map(card => renderCard(card, false)).join('');
       previousFieldEl.style.display = previousFieldCards.length > 0 ? 'flex' : 'none';
       previousFieldEl.classList.remove('is-recent-clear');
     }
   } else {
-    fieldEl.innerHTML = '<span style="color: #bbb;">（場は流れています。好きなカードを出せます）</span>';
+    fieldEl.innerHTML = previousFieldCards.length > 0
+      ? previousFieldCards.map(card => renderCard(card, false)).join('')
+      : '<span style="color: #bbb;">（場は流れています。好きなカードを出せます）</span>';
+    fieldEl.classList.toggle('is-recent-clear', previousFieldCards.length > 0);
     if (previousFieldEl) {
-      previousFieldEl.innerHTML = previousFieldCards.map(card => renderCard(card, false)).join('');
-      previousFieldEl.style.display = previousFieldCards.length > 0 ? 'flex' : 'none';
-      previousFieldEl.classList.toggle('is-recent-clear', previousFieldCards.length > 0);
+      previousFieldEl.innerHTML = '';
+      previousFieldEl.style.display = 'none';
+      previousFieldEl.classList.remove('is-recent-clear');
     }
   }
 
@@ -1777,15 +1807,15 @@ function handleCardClick(cardId) {
 
   if (selectedCardIds.has(cardId)) {
     selectedCardIds.delete(cardId);
-    updateHand(currentHand);
     updatePlayButton();
+    updateHand(currentHand);
     return;
   }
 
   if (isCardSelectable(card)) {
     selectedCardIds.add(cardId);
-    updateHand(currentHand);
     updatePlayButton();
+    updateHand(currentHand);
   } else {
     const fieldCards = latestGameState.fieldCards || [];
     const selectedCards = currentHand.filter(c => selectedCardIds.has(c.id));
@@ -1822,6 +1852,7 @@ function updatePlayButton() {
     const required = pendingExchangeSelection.required;
     playBtn.innerText = `交換確定 (${count}/${required}枚)`;
     playBtn.disabled = count !== required;
+    passBtn.disabled = true;
     passBtn.style.visibility = 'hidden';
     return;
   }
@@ -1838,6 +1869,7 @@ function updatePlayButton() {
         ? `渡すカード確定 (${passCount}/${passNeeded})`
         : `捨てカード確定 (${discardCount}/${discardNeeded})`;
     playBtn.disabled = !totalOk;
+    passBtn.disabled = true;
     passBtn.style.visibility = 'hidden';
     return;
   }
@@ -1864,7 +1896,8 @@ function updatePlayButton() {
   }
 
   if (count > 0) {
-    passBtn.style.visibility = 'hidden';
+    passBtn.disabled = true;
+    passBtn.style.visibility = 'visible';
     return;
   }
 

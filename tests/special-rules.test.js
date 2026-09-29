@@ -4,6 +4,44 @@ import { applyCardEffects } from '../src/game/daifugo/cardEffects.js';
 import { checkForbiddenFinish } from '../public/js/rules.js';
 
 describe('特殊効果テスト', () => {
+  it('4枚階段は通常革命と重複反転せず、8切りより先に階段革命する', () => {
+    const room = {
+      rules: {
+        revolution: true,
+        staircase: true,
+        staircaseRevolution: true,
+        eightCut: true,
+        suitLock: false,
+        elevenBack: false,
+        fiveSkip: false,
+        tenDiscard: false,
+        sevenPass: false
+      },
+      fieldCards: [],
+      isRevolution: false,
+      isElevenBack: false,
+      lockedSuit: null,
+      lockedNumber: null,
+      passCount: 0,
+      winners: [],
+      players: [{ id: 'p1', hand: [] }, { id: 'p2', hand: [{ id: 'other', suit: '♥', num: 3 }] }]
+    };
+    const cards = [6, 7, 8, 9].map((num, index) => ({
+      id: `stair-${index}`,
+      suit: '♠',
+      num,
+      strength: index + 4
+    }));
+
+    const result = applyCardEffects(room, { id: 'p1', name: 'A', hand: [] }, cards, { valid: true });
+    const log = result.actionLogs.join(' ');
+
+    expect(room.isRevolution).toBe(true);
+    expect(result.clearField).toBe(true);
+    expect(log).toContain('階段革命！');
+    expect(log).not.toContain('【革命！】');
+  });
+
   it('スートが異なる連続ランクの連続プレイで次の数字を縛る', () => {
     const room = {
       rules: { numberLock: true },

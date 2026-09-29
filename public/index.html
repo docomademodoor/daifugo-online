@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;500;700;800&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=3.65">
+  <link rel="stylesheet" href="/css/style.css?v=3.70">
   <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
@@ -263,18 +263,23 @@
       </section>
     </section>
 
+    <div class="table-status-stack">
+      <div id="game-status-banner" class="status-banner" role="status" aria-live="polite" style="display:none;">
+        <div id="game-status-tags" class="game-status-tags"></div>
+      </div>
+      <div id="suit-lock-indicator" class="lock-indicator" style="display:none;"></div>
+    </div>
+
     <div class="table-stage">
       <!-- 場 -->
       <div class="field-section">
         <div class="field-title">場</div>
-        <div id="game-status-banner" class="status-banner" role="status" aria-live="polite" style="display:none;">
-          <div id="game-status-tags" class="game-status-tags"></div>
-        </div>
         <div id="previous-field-card" class="previous-field-card" aria-hidden="true" style="display:none;"></div>
         <div id="field" class="field-cards"></div>
-        <div id="suit-lock-indicator" class="lock-indicator" style="display:none;"></div>
         <p id="game-action-message" class="game-action-message" role="status" aria-live="polite"></p>
       </div>
+
+      <button id="pass-btn" class="pass-btn" onclick="passTurn()">パスする</button>
 
       <!-- 他プレイヤー状態 -->
       <div class="others-section">
@@ -293,7 +298,6 @@
       </div>
       <div class="control-actions">
         <button id="play-btn" class="play-btn" onclick="submitPlayCards()">出す (0枚)</button>
-        <button id="pass-btn" class="pass-btn" onclick="passTurn()">パスする</button>
       </div>
     </div>
 
@@ -301,14 +305,6 @@
     <div class="hand-section">
       <div id="hand" class="hand-cards"></div>
     </div>
-
-      <div id="join-request-modal" class="modal" style="display:none;" role="dialog" aria-modal="true">
-        <div class="modal-content join-request-content">
-          <h2 id="join-request-title">途中参加の申請</h2>
-          <p id="join-request-message"></p>
-          <div id="join-request-actions" class="modal-actions"></div>
-        </div>
-      </div>
 
       <!-- ルールポップアップ -->
     <div id="rules-modal" class="modal rules-modal" style="display:none;">
@@ -356,6 +352,22 @@
     </div>
   </div>
 
+  <div id="join-request-modal" class="modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="join-request-title">
+    <div class="modal-content join-request-content">
+      <h2 id="join-request-title">途中参加の申請</h2>
+      <p id="join-request-message"></p>
+      <div id="join-request-actions" class="modal-actions"></div>
+    </div>
+  </div>
+
+  <aside id="join-request-notice" class="join-request-notice" role="status" aria-live="polite" hidden>
+    <div class="join-request-notice-copy">
+      <strong>途中参加の申請</strong>
+      <span id="join-request-notice-message"></span>
+    </div>
+    <div id="join-request-notice-actions" class="join-request-notice-actions"></div>
+  </aside>
+
   <div id="room-chat-root" class="room-chat-root" hidden>
     <section id="room-chat-panel" class="room-chat-panel" aria-label="ルームチャット" hidden>
       <header class="room-chat-header">
@@ -386,6 +398,6 @@
   </div>
 
   <script src="/js/rules.js?v=1.0"></script>
-  <script src="/js/app.js?v=2.65"></script>
+  <script src="/js/app.js?v=2.69"></script>
 </body>
 </html>

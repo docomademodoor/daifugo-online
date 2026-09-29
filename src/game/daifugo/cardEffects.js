@@ -40,14 +40,27 @@ function applyCardEffects(room, currentPlayer, playedCards, validation, selectio
     return { clearField, skipCount, actionLogs };
   }
 
-  // 2. 革命判定 (4枚以上の同時出し)
-  // 8切りより先に反転を処理することで、8×3 + JOKER のようなケースでも革命が発生する。
-  if (room.rules.revolution && playedCards.length >= 4) {
+  // 2. 革命判定 (同じランクを4枚以上)
+  const nonJokers = playedCards.filter(card => card.id !== 'JOKER');
+  const isSameRankPlay = nonJokers.length > 0
+    && nonJokers.every(card => String(card.num) === String(nonJokers[0].num));
+  if (room.rules.revolution && playedCards.length >= 4 && isSameRankPlay) {
     room.isRevolution = !room.isRevolution;
     actionLogs.push(
       room.isRevolution
         ? `【革命！】${getStrengthOrderMessage(room)}`
         : `【革命返し！】${getStrengthOrderMessage(room)}`
+    );
+  }
+
+  // 階段革命は同ランクの通常革命とは別の条件として一度だけ反転する。
+  if (room.rules.staircaseRevolution && room.rules.staircase
+    && playedCards.length >= 4 && isStraightSequence(playedCards)) {
+    room.isRevolution = !room.isRevolution;
+    actionLogs.push(
+      room.isRevolution
+        ? `【階段革命！】${getStrengthOrderMessage(room)}`
+        : `【階段革命解除！】${getStrengthOrderMessage(room)}`
     );
   }
 
@@ -68,19 +81,6 @@ function applyCardEffects(room, currentPlayer, playedCards, validation, selectio
     clearField = true;
     actionLogs.push(`【最強手！】${currentPlayer.name} が場を流しました！`);
     return { clearField, skipCount, actionLogs };
-  }
-
-  // 3-2. 階段革命判定 (一般的なローカルルール: 同じマークの連番4枚以上で革命)
-  if (room.rules.staircaseRevolution && room.rules.staircase && playedCards.length >= 4) {
-    const nonJokers = playedCards.filter(c => c.id !== 'JOKER');
-    if (nonJokers.length >= 2 && isStraightSequence(playedCards)) {
-      room.isRevolution = !room.isRevolution;
-      actionLogs.push(
-        room.isRevolution
-          ? `【階段革命！】${getStrengthOrderMessage(room)}`
-          : `【階段革命解除！】${getStrengthOrderMessage(room)}`
-      );
-    }
   }
 
   // 4. Jバック (11バック: Jを含む出し方で一時反転)
