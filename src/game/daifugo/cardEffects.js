@@ -2,7 +2,7 @@
  * 特殊カード役および効果の適用ハンドラー
  */
 
-const { countEffectiveRank, isStraightSequence, isUnbeatablePlay } = require('./rules');
+const { countEffectiveRank, getSuitComposition, isStraightSequence, isUnbeatablePlay } = require('./rules');
 const RANK_VALUES = { '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, J: 11, Q: 12, K: 13, A: 14, '2': 15 };
 
 function getUniformRank(cards) {
@@ -58,7 +58,7 @@ function applyCardEffects(room, currentPlayer, playedCards, validation, selectio
     return { clearField, skipCount, actionLogs };
   }
 
-  // 通常時の最強手（2の複数枚出し、同一スートのJQK階段）は場を流す。
+  // 通常時の最強手（2の複数枚出し、同一マークのJQK階段）は場を流す。
   if (isUnbeatablePlay(playedCards, room.rules, {
     isRevolution: room.isRevolution,
     isElevenBack: room.isElevenBack,
@@ -142,18 +142,28 @@ function applyCardEffects(room, currentPlayer, playedCards, validation, selectio
   }
 
   // 8. 数字縛り (同じ枚数の同ランク出しが1つずつ続いたら、次のランクを要求)
-  if (room.rules.numberLock && room.fieldCards.length === playedCards.length) {
+  if ((room.rules.numberLock || room.rules.completeLock)
+    && room.fieldCards.length === playedCards.length) {
     const previousRank = getUniformRank(room.fieldCards);
     const playedRank = getUniformRank(playedCards);
-    const startsLock = !room.lockedNumber && room.passCount === 0 &&
+    const startsNumberLock = !room.lockedNumber && room.passCount === 0 &&
       previousRank !== null && playedRank === previousRank + 1;
     const continuesLock = room.lockedNumber && getRankLabel(playedRank) === String(room.lockedNumber);
+    const previousSuits = getSuitComposition(room.fieldCards);
+    const playedSuits = getSuitComposition(playedCards);
+    const sameSuitComposition = previousSuits && playedSuits
+      && previousSuits.length === playedSuits.length
+      && previousSuits.every((suit, index) => suit === playedSuits[index]);
+    const startsLock = startsNumberLock && (!room.rules.completeLock || sameSuitComposition);
 
     if (startsLock || continuesLock) {
       const nextRank = playedRank < 15 ? getRankLabel(playedRank + 1) : null;
       room.lockedNumber = nextRank;
+      room.lockedNumberSuits = room.rules.completeLock && nextRank ? playedSuits : null;
       if (nextRank) {
-        actionLogs.push(`【数字縛り！】次は [${nextRank}] のカードで出してください`);
+        actionLogs.push(room.rules.completeLock
+          ? `【完縛り！】次は [${nextRank}]、同じマーク構成で出してください`
+          : `【数字縛り！】次は [${nextRank}] のカードで出してください`);
       }
     }
   }

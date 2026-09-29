@@ -125,7 +125,8 @@ function chooseCpuAction(room, player) {
     isRevolution: room.isRevolution,
     isElevenBack: room.isElevenBack,
     lockedSuit: room.lockedSuit,
-    lockedNumber: room.lockedNumber
+    lockedNumber: room.lockedNumber,
+    lockedNumberSuits: room.lockedNumberSuits
   };
   const playCounts = fieldCards.length === 0 && difficulty === 'hard'
     ? Array.from({ length: Math.min(4, hand.length) }, (_, index) => index + 1)

@@ -12,6 +12,18 @@
     return map[String(card.num)] ?? null;
   }
 
+  function getSuitComposition(cards) {
+    if (!Array.isArray(cards) || cards.length === 0 || cards.some(card => card.id === 'JOKER')) return null;
+    return cards.map(card => card.suit).sort();
+  }
+
+  function hasSameSuitComposition(cards, lockedSuits) {
+    const suits = getSuitComposition(cards);
+    return !!suits && Array.isArray(lockedSuits)
+      && suits.length === lockedSuits.length
+      && suits.every((suit, index) => suit === lockedSuits[index]);
+  }
+
   function countEffectiveRank(cards, rank) {
     const targetValue = getNumericValue({ num: rank });
     const nonJokers = cards.filter(card => card.id !== 'JOKER');
@@ -208,12 +220,17 @@
       };
     }
 
-    if (rules.numberLock && state.lockedNumber) {
+    if ((rules.numberLock || rules.completeLock) && state.lockedNumber) {
       const lockedValue = getNumericValue({ num: state.lockedNumber });
       const hasLockedNumber = playedCards.every(c => getNumericValue(c) === lockedValue);
       if (!hasLockedNumber) {
         return { valid: false, message: `数字縛り中です！ [${state.lockedNumber}] のカードで出してください。` };
       }
+    }
+
+    if (rules.completeLock && state.lockedNumberSuits
+      && !hasSameSuitComposition(playedCards, state.lockedNumberSuits)) {
+      return { valid: false, message: '完縛り中です。同じマーク構成で出してください。' };
     }
 
     // マーク縛り判定
@@ -401,6 +418,7 @@
 
   // エクスポート設定 (Node.js とブラウザ両用)
   exports.isValidCombination = isValidCombination;
+  exports.getSuitComposition = getSuitComposition;
   exports.countEffectiveRank = countEffectiveRank;
   exports.isStraightSequence = isStraightSequence;
   exports.isUnbeatablePlay = isUnbeatablePlay;

@@ -5,6 +5,7 @@ module.exports = {
   label: '大富豪',
   maxPlayers: 8,
   createRules(rules = {}) {
+    const completeLock = rules?.completeLock ?? false;
     return {
       eightCut: rules?.eightCut ?? true,
       revolution: rules?.revolution ?? true,
@@ -13,7 +14,8 @@ module.exports = {
       staircase: rules?.staircase ?? true,
       staircaseRevolution: rules?.staircaseRevolution ?? true,
       elevenBack: rules?.elevenBack ?? true,
-      numberLock: rules?.numberLock ?? true,
+      numberLock: completeLock ? false : rules?.numberLock ?? true,
+      completeLock,
       fiveSkip: rules?.fiveSkip ?? true,
       sevenPass: rules?.sevenPass ?? true,
       tenDiscard: rules?.tenDiscard ?? true,
@@ -33,6 +35,7 @@ module.exports = {
       isElevenBack: false,
       lockedSuit: null,
       lockedNumber: null,
+      lockedNumberSuits: null,
       actionMessage: 'ルームが作成されました',
       winners: [],
       previousRoles: null,

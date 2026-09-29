@@ -75,39 +75,44 @@
 
         <div id="daifugo-rules-section" class="rules-section">
           <h3>採用するルール設定</h3>
-          <p class="rules-always-on">常時適用: 革命 / マーク縛り / スペ3返し / 禁止上がり / 都落ち / ♢3スタート / ジョーカー</p>
-          <div class="rules-grid">
+          <div class="rules-settings-layout">
+            <div class="rules-grid">
             <label class="rule-checkbox">
               <input type="checkbox" id="rule-staircase" checked>
-              <span><strong>階段</strong><small>同じマークの連番を出せる</small></span>
+              <span><strong>階段</strong><small title="同じマークの連番を出せる">同じマークの連番</small></span>
             </label>
             <label class="rule-checkbox">
               <input type="checkbox" id="rule-staircaseRevolution" checked>
-              <span><strong>階段革命</strong><small>同じマークの連番4枚で革命発動</small></span>
+              <span><strong>階段革命</strong><small title="同じマークの階段を4枚以上出すと強さが逆転">4枚以上の階段で革命</small></span>
             </label>
             <label class="rule-checkbox">
-              <input type="checkbox" id="rule-elevenBack" checked>
-              <span><strong>Jバック</strong><small>Jを含む出し方で一時的に強さ逆転</small></span>
+              <input type="checkbox" id="rule-completeLock" checked onchange="updateLockRuleSelection('completeLock')">
+              <span><strong>完縛り</strong><small title="数字縛りに加え、続く出し札も同じマーク構成にする">続く札も同じマーク構成</small></span>
             </label>
             <label class="rule-checkbox">
-              <input type="checkbox" id="rule-numberLock" checked>
-              <span><strong>数字縛り</strong><small>マークを問わず数字が続いたら、次の数字で出す</small></span>
+              <input type="checkbox" id="rule-numberLock" onchange="updateLockRuleSelection('numberLock')">
+              <span><strong>数字縛り</strong><small title="同じ枚数で数字が連続したら、次の数字だけで出す">連番後は次の数字のみ</small></span>
             </label>
             <label class="rule-checkbox">
               <input type="checkbox" id="rule-fiveSkip" checked>
-              <span><strong>5飛び</strong><small>5を出すと飛ばし、人数超過時は自分の番に戻る</small></span>
+              <span><strong>5飛び</strong><small title="5を出した枚数分、次の人を飛ばす">枚数分、次を飛ばす</small></span>
             </label>
             <label class="rule-checkbox">
               <input type="checkbox" id="rule-sevenPass" checked>
-              <span><strong>7渡し</strong><small>7を出すと枚数分を次の人へ受け渡す</small></span>
+              <span><strong>7渡し</strong><small title="7を出した枚数分、次の人へ手札を渡す">枚数分、次へ手札を渡す</small></span>
             </label>
             <label class="rule-checkbox">
               <input type="checkbox" id="rule-tenDiscard" checked>
-              <span><strong>10捨て</strong><small>10を出すと手札から1枚捨てる</small></span>
+              <span><strong>10捨て</strong><small title="10を出した枚数分、手札からカードを捨てる">枚数分、手札を捨てる</small></span>
             </label>
+            <label class="rule-checkbox">
+              <input type="checkbox" id="rule-elevenBack" checked>
+              <span><strong>Jバック</strong><small title="Jを出すと、場が流れるまで強さが反転">Jで場が流れるまで反転</small></span>
+            </label>
+            </div>
+            <p class="rules-always-on">常時適用: 革命 / マーク縛り / スペ3返し / 禁止上がり / 都落ち / ♢3スタート / ジョーカー</p>
           </div>
         </div>
-
         <section id="chinchiro-rules-section" class="rules-section chinchiro-lobby-rules-section" style="display:none;" aria-labelledby="chinchiro-lobby-rules-heading">
           <h3 id="chinchiro-lobby-rules-heading">チンチロのルール</h3>
           <ul class="chinchiro-lobby-rules">
@@ -381,6 +386,7 @@
     </div>
   </div>
 
-  <script src="/js/app.js?v=2.59"></script>
+  <script src="/js/rules.js?v=1.0"></script>
+  <script src="/js/app.js?v=2.65"></script>
 </body>
 </html>

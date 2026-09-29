@@ -1,4 +1,5 @@
 const socket = io();
+const daifugoRules = window.DaifugoRules;
 
 let myRoomId = '';
 let myId = '';
@@ -264,6 +265,7 @@ const RULE_LABELS = {
   staircaseRevolution: '階段革命',
   elevenBack: 'Jバック',
   numberLock: '数字縛り',
+  completeLock: '完縛り',
   fiveSkip: '5飛び',
   sevenPass: '7渡し',
   tenDiscard: '10捨て',
@@ -274,21 +276,22 @@ const RULE_LABELS = {
 };
 
 const RULE_DETAILS = {
-  eightCut: '8を含む出し方で場を流す',
-  revolution: '4枚以上を同時に出すと、カードの強さが反転する',
-  suitLock: '同じマークのカードだけが続けて出せるようになる',
-  spe3: '♠3を使ってJOKERの場を返し、次の場を作り直す',
-  staircase: '同じマークの連番を出せる',
-  staircaseRevolution: '同じマークの連番4枚以上で革命を起こす',
-  elevenBack: 'Jを含む出し方で、場が流れるまで強さが逆転する',
-  numberLock: 'マークを問わず、同じ枚数で数字が連続した後は次の数字だけ出せる',
-  fiveSkip: '5を含む出し方で飛ばし、人数超過時は自分の番に戻る',
-  sevenPass: '7を出すと次の人へ枚数分を受け渡す',
-  tenDiscard: '10を出すと、手札から1枚を捨てる',
-  forbiddenFinish: '最後の1枚で上がるのは禁止',
-  miyakoOchi: '前回の大富豪が失敗した場合、都落ちの判定が入る',
-  dia3Start: '♦3を持つ人からスタートする',
-  includeJoker: 'ジョーカーを含めてゲームを進行する'
+  eightCut: '8を含むカードを出すと場が流れ、出した人から再開します。',
+  revolution: '4枚以上を同時に出すと、カードの強さが逆転します。',
+  suitLock: '同じマークが続くと、場が流れるまで同じマークでしか出せません。',
+  spe3: 'ジョーカー1枚の場に♠3を出すと、場を流せます。',
+  staircase: '同じマークの連続した数字を3枚以上まとめて出せます。',
+  staircaseRevolution: '同じマークの階段を4枚以上出すと、革命が起きます。',
+  elevenBack: 'Jを出すと、場が流れるまでカードの強さが反転します。',
+  numberLock: '同じ枚数で数字が連続すると、次の数字だけ出せます。',
+  completeLock: '数字縛りに加えて、続く出し札は同じマーク構成にします。',
+  fiveSkip: '5を出した枚数分、次の人を飛ばします。全員を飛ばすと自分に戻ります。',
+  sevenPass: '7を出すと、出した枚数分の手札を次の人へ渡します。',
+  tenDiscard: '10を出した枚数分、手札から選んで捨てます。',
+  forbiddenFinish: 'ルールで指定された禁止カードで上がると、反則になります。',
+  miyakoOchi: '前回の大富豪が次のゲームでトップを取れないと、大貧民に転落します。',
+  dia3Start: '初回は♦3を持っている人から始まります。',
+  includeJoker: 'ジョーカーを1枚加えてゲームを行います。'
 };
 
 const FIXED_RULE_KEYS = new Set([
@@ -305,11 +308,12 @@ const FIXED_RULE_KEYS = new Set([
 const SWITCHABLE_RULE_KEYS = [
   'staircase',
   'staircaseRevolution',
-  'elevenBack',
+  'completeLock',
   'numberLock',
   'fiveSkip',
   'sevenPass',
-  'tenDiscard'
+  'tenDiscard',
+  'elevenBack'
 ];
 
 const RULE_DISPLAY_ORDER = [
@@ -322,12 +326,13 @@ const RULE_DISPLAY_ORDER = [
   'miyakoOchi',
   'dia3Start',
   'includeJoker',
+  'completeLock',
   'numberLock',
   'fiveSkip',
   'sevenPass',
-  'eightCut',
   'tenDiscard',
-  'elevenBack'
+  'elevenBack',
+  'eightCut'
 ];
 
 const RULE_DISPLAY_ORDER_INDEX = new Map(
@@ -339,6 +344,13 @@ function sortRulesForDisplay(items) {
     (RULE_DISPLAY_ORDER_INDEX.get(left.key ?? left) ?? Number.MAX_SAFE_INTEGER)
       - (RULE_DISPLAY_ORDER_INDEX.get(right.key ?? right) ?? Number.MAX_SAFE_INTEGER)
   );
+}
+
+function updateLockRuleSelection(ruleKey) {
+  const otherRuleKey = ruleKey === 'numberLock' ? 'completeLock' : 'numberLock';
+  const selectedRule = document.getElementById(`rule-${ruleKey}`);
+  const otherRule = document.getElementById(`rule-${otherRuleKey}`);
+  if (selectedRule?.checked && otherRule) otherRule.checked = false;
 }
 
 const ROLE_CLASSES = {
@@ -643,6 +655,7 @@ function createRoom() {
     staircaseRevolution: document.getElementById('rule-staircaseRevolution')?.checked ?? true,
     elevenBack: document.getElementById('rule-elevenBack').checked,
     numberLock: document.getElementById('rule-numberLock')?.checked ?? true,
+    completeLock: document.getElementById('rule-completeLock')?.checked ?? false,
     fiveSkip: document.getElementById('rule-fiveSkip').checked,
     sevenPass: document.getElementById('rule-sevenPass')?.checked ?? true,
     tenDiscard: document.getElementById('rule-tenDiscard').checked
@@ -1262,7 +1275,12 @@ function updateUI(data) {
   }
   if (data.lockedNumber) {
     const lockedNumbers = Array.isArray(data.lockedNumber) ? data.lockedNumber : [data.lockedNumber];
-    addStatusTag(`数字縛り ${lockedNumbers.join(' → ')}`);
+    if (data.rules?.completeLock) {
+      const lockedSuits = (data.lockedNumberSuits || []).join('・');
+      addStatusTag(`完縛り ${lockedNumbers.join(' → ')}${lockedSuits ? ` ${lockedSuits}` : ''}`);
+    } else {
+      addStatusTag(`数字縛り ${lockedNumbers.join(' → ')}`);
+    }
   }
 
   actionMessage.innerText = formatGameActionMessage(data.actionMessage);
@@ -1556,143 +1574,12 @@ function holdChinchiro() {
   if (myRoomId) socket.emit('hold-chinchiro', myRoomId);
 }
 
-// --- ルール判定ヘルパー（スマートアシスト用） ---
-
-function getNumericValue(card) {
-  if (!card || card.id === 'JOKER') return null;
-  const map = { '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, '10': 10, 'J': 11, 'Q': 12, 'K': 13, 'A': 14, '2': 15 };
-  return map[String(card.num)] ?? null;
-}
-
-function isStraightSequence(cards) {
-  if (!Array.isArray(cards) || cards.length < 3) return false;
-
-  const noJoker = cards.filter(c => c.id !== 'JOKER');
-  if (noJoker.length < 3) return false;
-
-  const suit = noJoker[0].suit;
-  if (noJoker.some(c => c.suit !== suit)) return false;
-
-  const values = noJoker
-    .map(c => getNumericValue(c))
-    .filter(v => v !== null)
-    .sort((a, b) => a - b);
-
-  if (values.length !== new Set(values).size) return false;
-  const span = values[values.length - 1] - values[0];
-  return span === values.length - 1;
-}
-
-function canCompleteStaircaseSelection(selectedCards, card) {
-  if (!latestGameState?.rules?.staircase) return false;
-  const candidate = [...selectedCards, card];
-  if (candidate.length >= 3) return isStraightSequence(candidate);
-
-  const selectedIds = new Set(candidate.map(selected => selected.id));
-  return currentHand.some(nextCard =>
-    !selectedIds.has(nextCard.id) && isStraightSequence([...candidate, nextCard])
-  );
-}
-
-function isValidCombination(cards, rules = {}) {
-  if (!cards || cards.length === 0) return { valid: false, message: 'カードが選択されていません' };
-  if (cards.length === 1) return { valid: true };
-
-  const nonJokers = cards.filter(c => c.id !== 'JOKER');
-  if (nonJokers.length === 0) return { valid: true };
-
-  const baseNum = nonJokers[0].num;
-  const allSame = nonJokers.every(c => c.num === baseNum);
-  if (allSame) return { valid: true };
-
-  if (rules.staircase && isStraightSequence(cards)) {
-    return { valid: true };
-  }
-
-  return { valid: false, message: '複数枚出す場合は、同じ数字か、同じマークの連番の組み合わせにしてください' };
-}
-
-function getPlayStrength(cards) {
-  if (cards.length === 1 && cards[0].id === 'JOKER') {
-    return 14;
-  }
-  const nonJokers = cards.filter(c => c.id !== 'JOKER');
-  if (nonJokers.length > 0) {
-    return nonJokers[0].strength;
-  }
-  return 14;
-}
-
 function isValidPlayClient(playedCards, fieldCards, rules = {}, state = {}) {
-  const comboCheck = isValidCombination(playedCards, rules);
-  if (!comboCheck.valid) return comboCheck;
-
   const hasDiamondThree = (currentHand || []).some(c => c.id === '♦3');
   if (state.mustPlayDiamondThree && hasDiamondThree && !playedCards.some(c => c.id === '♦3')) {
     return { valid: false, message: '♦3を持っている場合は、♦3を含むカードを出してください。' };
   }
-
-  if (!fieldCards || fieldCards.length === 0) {
-    return { valid: true };
-  }
-
-  const currentCount = fieldCards.length;
-  const playCount = playedCards.length;
-
-  // スペ3返し
-  if (
-    rules.spe3 &&
-    currentCount === 1 &&
-    fieldCards[0].id === 'JOKER' &&
-    playCount === 1 &&
-    playedCards[0].id === '♠3'
-  ) {
-    return { valid: true, isSpe3: true };
-  }
-
-  // 枚数一致チェック
-  if (playCount !== currentCount) {
-    return {
-      valid: false,
-      message: `場に出ている枚数と同じ枚数（${currentCount}枚）で出してください！`
-    };
-  }
-
-  // マーク縛り
-  if (rules.suitLock && state.lockedSuit) {
-    const isViolated = playedCards.some(
-      c => c.id !== 'JOKER' && c.suit !== state.lockedSuit
-    );
-    if (isViolated) {
-      return {
-        valid: false,
-        message: `マーク縛り中です！ [${state.lockedSuit}] のカードしか出せません。`
-      };
-    }
-  }
-
-  // 強さ判定
-  const isReversed = (!!state.isRevolution) !== (!!state.isElevenBack);
-  const playStrength = getPlayStrength(playedCards);
-  const fieldStrength = getPlayStrength(fieldCards);
-
-  const isFieldSingleJoker = currentCount === 1 && fieldCards[0].id === 'JOKER';
-  const isPlaySingleJoker = playCount === 1 && playedCards[0].id === 'JOKER';
-
-  if (isPlaySingleJoker) return { valid: true };
-  if (isFieldSingleJoker) return { valid: false, message: 'ジョーカーより強いカードはありません！' };
-
-  if (isReversed) {
-    if (playStrength >= fieldStrength) {
-      return { valid: false, message: '強さ逆転中です！場より弱いカードを出してください！' };
-    }
-  } else {
-    if (playStrength <= fieldStrength) {
-      return { valid: false, message: '場に出ているカードより強いカードを出してください！' };
-    }
-  }
-
-  return { valid: true };
+  return daifugoRules.isValidPlay(playedCards, fieldCards, rules, state);
 }
 
 /**
@@ -1703,109 +1590,22 @@ function isCardSelectable(card) {
 
   const currentSocketId = socket.id || myId;
   const isMyTurn = latestGameState.turnPlayerId === currentSocketId;
-  if (!isMyTurn) return false;
-
-  if (selectedCardIds.has(card.id)) return true;
-
-  const fieldCards = latestGameState.fieldCards || [];
-  const rules = latestGameState.rules || {};
   const selectedCards = currentHand.filter(c => selectedCardIds.has(c.id));
-
   const hasDiamondThree = currentHand.some(c => c.id === '♦3');
   if (latestGameState.mustPlayDiamondThree && hasDiamondThree
     && !selectedCards.some(c => c.id === '♦3') && card.id !== '♦3') {
     return false;
   }
 
-  // --- パターン1: まだ1枚も選択されていないとき ---
-  if (selectedCards.length === 0) {
-    // 親（場が空）の場合: どのカードでも1枚目として選べる
-    if (fieldCards.length === 0) {
-      return true;
-    }
-
-    const targetCount = fieldCards.length;
-
-    // 場が1枚出しの場合
-    if (targetCount === 1) {
-      return isValidPlayClient([card], fieldCards, rules, latestGameState).valid;
-    }
-
-    // 場が複数枚出しの場合 (targetCount >= 2)
-    // このカードを手札と組み合わせて targetCount 枚の出せる手を作れるかチェック
-    if (card.id === 'JOKER') {
-      const nonJokers = currentHand.filter(c => c.id !== 'JOKER');
-      const jokers = currentHand.filter(c => c.id === 'JOKER');
-      const uniqueNums = [...new Set(nonJokers.map(c => c.num))];
-
-      return uniqueNums.some(num => {
-        const matching = nonJokers.filter(c => c.num === num);
-        if (matching.length + jokers.length >= targetCount) {
-          const sample = matching.slice(0, targetCount - 1);
-          sample.push(card);
-          return isValidPlayClient(sample, fieldCards, rules, latestGameState).valid;
-        }
-        return false;
-      });
-    } else {
-      const sameNumCards = currentHand.filter(c => c.id !== 'JOKER' && c.num === card.num);
-      const jokers = currentHand.filter(c => c.id === 'JOKER');
-
-      if (sameNumCards.length + jokers.length < targetCount) {
-        return false; // 枚数が足りない
-      }
-
-      // サンプル手を作成して判定
-      const sample = [...sameNumCards];
-      let jIdx = 0;
-      while (sample.length < targetCount && jIdx < jokers.length) {
-        sample.push(jokers[jIdx++]);
-      }
-      return isValidPlayClient(sample.slice(0, targetCount), fieldCards, rules, latestGameState).valid;
-    }
-  }
-
-  // --- パターン2: すでに1枚以上選択されているとき (追加選択) ---
-  const targetCount = fieldCards.length > 0 ? fieldCards.length : null;
-
-  // 場の枚数に達している場合は追加選択不可
-  if (targetCount && selectedCards.length >= targetCount) {
-    return false;
-  }
-  // 場が空の場合でも最大4枚まで
-  if (!targetCount && selectedCards.length >= 4) {
-    return false;
-  }
-
-  const baseCard = selectedCards.find(c => c.id !== 'JOKER');
-
-  if (card.id === 'JOKER') {
-    // JOKERは任意の数字のペアに追加可能
-    if (targetCount && selectedCards.length + 1 === targetCount) {
-      const candidate = [...selectedCards, card];
-      return isValidPlayClient(candidate, fieldCards, rules, latestGameState).valid;
-    }
-    return true;
-  }
-
-  if (baseCard) {
-    // 基準カードと同じ数字のみ選択可能
-    if (card.num !== baseCard.num) {
-      return !targetCount && canCompleteStaircaseSelection(selectedCards, card);
-    }
-    if (targetCount && selectedCards.length + 1 === targetCount) {
-      const candidate = [...selectedCards, card];
-      return isValidPlayClient(candidate, fieldCards, rules, latestGameState).valid;
-    }
-    return true;
-  } else {
-    // JOKERのみが選ばれていた場合、最初の数字カードとして追加可能
-    if (targetCount && selectedCards.length + 1 === targetCount) {
-      const candidate = [...selectedCards, card];
-      return isValidPlayClient(candidate, fieldCards, rules, latestGameState).valid;
-    }
-    return true;
-  }
+  return daifugoRules.isCardSelectable(
+    card,
+    currentHand,
+    selectedCards,
+    latestGameState.fieldCards || [],
+    latestGameState.rules || {},
+    latestGameState,
+    isMyTurn
+  );
 }
 
 function renderCard(card, isClickable = true, isSelected = false, isSelectable = true) {

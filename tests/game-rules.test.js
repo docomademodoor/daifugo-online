@@ -1,8 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import { isCardSelectable, isValidCombination, isValidPlay } from '../public/js/rules.js';
 import RoomManager from '../src/game/roomManager.js';
+import daifugoDefinition from '../src/game/daifugo/definition.js';
+import daifugoDefinition from '../src/game/daifugo/definition.js';
 
 describe('カードルール判定', () => {
+  it('数字縛りと完縛りは相互排他で両方オフも許可する', () => {
+    expect(daifugoDefinition.createRules({ numberLock: true, completeLock: true }))
+      .toMatchObject({ numberLock: false, completeLock: true });
+    expect(daifugoDefinition.createRules({ numberLock: false, completeLock: false }))
+      .toMatchObject({ numberLock: false, completeLock: false });
+  });
+
   it('同じ数字のペアは空場で出せる', () => {
     const cards = [
       { id: 'h1', suit: '♥', num: 10, strength: 10 },
@@ -123,6 +132,55 @@ describe('カードルール判定', () => {
 
     expect(invalid.valid).toBe(false);
     expect(invalid.message).toContain('数字縛り');
+  });
+
+  it('数字縛り中の選択補助は指定数字のペアだけ選べる', () => {
+    const hand = [
+      { id: 'c8', suit: '♣', num: 8, strength: 6 },
+      { id: 'd8', suit: '♦', num: 8, strength: 6 },
+      { id: 'c9', suit: '♣', num: 9, strength: 7 },
+      { id: 'd9', suit: '♦', num: 9, strength: 7 }
+    ];
+    const field = [
+      { id: 's7', suit: '♠', num: 7, strength: 5 },
+      { id: 'h7', suit: '♥', num: 7, strength: 5 }
+    ];
+    const state = { lockedNumber: 8 };
+
+    expect(isCardSelectable(hand[0], hand, [], field, { numberLock: true }, state)).toBe(true);
+    expect(isCardSelectable(hand[2], hand, [], field, { numberLock: true }, state)).toBe(false);
+    expect(isCardSelectable(hand[1], hand, [hand[0]], field, { numberLock: true }, state)).toBe(true);
+    expect(isCardSelectable(hand[3], hand, [hand[0]], field, { numberLock: true }, state)).toBe(false);
+  });
+
+  it('数字縛りと完縛りは排他で、両方オフにもできる', () => {
+    expect(daifugoDefinition.createRules({ numberLock: true, completeLock: true }))
+      .toMatchObject({ numberLock: false, completeLock: true });
+    expect(daifugoDefinition.createRules({ numberLock: false, completeLock: false }))
+      .toMatchObject({ numberLock: false, completeLock: false });
+  });
+
+  it('完縛り中は同じ数字でも異なるスート構成を選べない', () => {
+    const field = [
+      { id: 'spade-6', suit: '♠', num: 6, strength: 4 },
+      { id: 'heart-6', suit: '♥', num: 6, strength: 4 }
+    ];
+    const state = { lockedNumber: '7', lockedNumberSuits: ['♠', '♥'] };
+    const rules = { completeLock: true };
+    const matching = [
+      { id: 'spade-7', suit: '♠', num: 7, strength: 5 },
+      { id: 'heart-7', suit: '♥', num: 7, strength: 5 }
+    ];
+    const mismatched = [
+      { id: 'club-7', suit: '♣', num: 7, strength: 5 },
+      { id: 'diamond-7', suit: '♦', num: 7, strength: 5 }
+    ];
+
+    expect(isValidPlay(matching, field, rules, state).valid).toBe(true);
+    expect(isValidPlay(mismatched, field, rules, state)).toMatchObject({
+      valid: false,
+      message: expect.stringContaining('完縛り')
+    });
   });
 });
 

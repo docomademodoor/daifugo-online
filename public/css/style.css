@@ -197,7 +197,7 @@ h2, h3 {
 .tabs {
   display: flex;
   gap: 10px;
-  margin: 0 0 20px;
+  margin: 0 0 12px;
   width: min(100%, 420px);
 }
 
@@ -223,14 +223,16 @@ h2, h3 {
 .form-panel {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 9px;
+  width: min(100%, 720px);
 }
 
 .input-group {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: center;
   text-align: left;
-  gap: 6px;
+  gap: 8px;
 }
 
 .input-group label {
@@ -308,8 +310,8 @@ input[type="text"]:focus {
   grid-template-columns: 46px minmax(0, 1fr) 14px;
   align-items: center;
   gap: 10px;
-  min-height: 92px;
-  padding: 12px;
+  min-height: 76px;
+  padding: 9px 12px;
   border: 1px solid rgba(210, 232, 216, 0.2);
   border-radius: 9px;
   background: rgba(5, 29, 16, 0.48);
@@ -408,11 +410,20 @@ input[type="text"]:focus {
   color: #bdc3c7;
   font-size: 13px;
   margin-top: 4px;
-  margin-bottom: 8px;
+  margin-bottom: 0;
   padding: 8px 12px;
   background: rgba(46, 204, 113, 0.1);
   border-left: 3px solid #2ecc71;
   border-radius: 4px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.rules-settings-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  align-items: start;
+  gap: 12px;
 }
 
 .chinchiro-lobby-rules-section {
@@ -450,11 +461,11 @@ input[type="text"]:focus {
 
 .rules-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin-top: 10px;
-  max-height: 42vh;
-  overflow-y: auto;
+  max-height: none;
+  overflow: visible;
 }
 
 .rule-checkbox {
@@ -481,6 +492,13 @@ input[type="text"]:focus {
   word-break: break-word;
 }
 
+.rule-checkbox small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 @media (max-width: 500px) {
   .chinchiro-lobby-rules {
     grid-template-columns: 1fr;
@@ -502,13 +520,51 @@ input[type="text"]:focus {
   }
 
   .game-choice-grid {
-    grid-template-columns: 1fr;
-    gap: 7px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .input-group {
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .form-panel {
+    gap: 8px;
   }
 
   .game-choice-card {
-    min-height: 78px;
-    padding: 9px 11px;
+    grid-template-columns: 32px minmax(0, 1fr) 12px;
+    gap: 6px;
+    min-height: 68px;
+    padding: 7px;
+  }
+
+  .game-choice-symbol {
+    width: 32px;
+    height: 32px;
+    font-size: 21px;
+  }
+
+  .daifugo-symbol {
+    font-size: 14px;
+  }
+
+  .game-choice-copy {
+    gap: 2px;
+  }
+
+  .game-choice-copy strong {
+    font-size: 13px;
+  }
+
+  .game-choice-copy small,
+  .game-choice-meta {
+    font-size: 9px;
+  }
+
+  .game-choice-copy small {
+    line-height: 1.2;
   }
 
   .rules-grid {
@@ -521,7 +577,18 @@ input[type="text"]:focus {
   }
 
   .rule-checkbox small {
-    font-size: 10px;
+    font-size: 9px;
+  }
+}
+
+@media (max-width: 360px) {
+  .game-choice-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .game-choice-card {
+    grid-template-columns: 32px minmax(0, 1fr) 12px;
+    min-height: 60px;
   }
 }
 

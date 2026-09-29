@@ -36,6 +36,50 @@ describe('特殊効果テスト', () => {
     expect(room.lockedNumber).toBe('8');
   });
 
+  it('完縛りは同じスート構成の連続ランクだけで始まる', () => {
+    const room = {
+      rules: { numberLock: false, completeLock: true },
+      fieldCards: [
+        { id: 'previous-spade-6', suit: '♠', num: 6 },
+        { id: 'previous-heart-6', suit: '♥', num: 6 }
+      ],
+      passCount: 0,
+      lockedNumber: null,
+      lockedNumberSuits: null
+    };
+    const player = { id: 'p1', name: 'A', hand: [] };
+
+    applyCardEffects(room, player, [
+      { id: 'current-heart-7', suit: '♥', num: 7 },
+      { id: 'current-spade-7', suit: '♠', num: 7 }
+    ], {});
+
+    expect(room.lockedNumber).toBe('8');
+    expect(room.lockedNumberSuits).toEqual(['♠', '♥']);
+  });
+
+  it('完縛りは異なるスート構成の連続ランクでは始まらない', () => {
+    const room = {
+      rules: { numberLock: false, completeLock: true },
+      fieldCards: [
+        { id: 'previous-spade-6', suit: '♠', num: 6 },
+        { id: 'previous-heart-6', suit: '♥', num: 6 }
+      ],
+      passCount: 0,
+      lockedNumber: null,
+      lockedNumberSuits: null
+    };
+    const player = { id: 'p1', name: 'A', hand: [] };
+
+    applyCardEffects(room, player, [
+      { id: 'current-club-7', suit: '♣', num: 7 },
+      { id: 'current-diamond-7', suit: '♦', num: 7 }
+    ], {});
+
+    expect(room.lockedNumber).toBeNull();
+    expect(room.lockedNumberSuits).toBeNull();
+  });
+
   it('階段を出しただけでは数字縛りにならない', () => {
     const room = { rules: { numberLock: true }, fieldCards: [], passCount: 0 };
     const player = { name: 'A', id: 'p1', hand: [] };

@@ -26,6 +26,7 @@ function startRound(roomManager, room) {
   room.isElevenBack = false;
   room.lockedSuit = null;
   room.lockedNumber = null;
+  room.lockedNumberSuits = null;
   room.winners = [];
   room.exchangeRequirements = {};
   room.exchangeSelections = {};
@@ -87,6 +88,7 @@ function getPublicState(room) {
     isReversed: (!!room.isRevolution) !== (!!room.isElevenBack),
     lockedSuit: room.lockedSuit,
     lockedNumber: room.lockedNumber,
+    lockedNumberSuits: room.lockedNumberSuits || null,
     exchangeRequirements: room.exchangeRequirements || {},
     mustPlayDiamondThree: requiresDiamondThreeForOpeningPlay(room, currentPlayer)
   };
@@ -300,7 +302,8 @@ function playCards(roomManager, socketId, { roomId, cards, discardCards = [], pa
     isRevolution: room.isRevolution,
     isElevenBack: room.isElevenBack,
     lockedSuit: room.lockedSuit,
-    lockedNumber: room.lockedNumber
+    lockedNumber: room.lockedNumber,
+    lockedNumberSuits: room.lockedNumberSuits
   });
   if (!validation.valid) return { success: false, message: validation.message };
 
@@ -320,6 +323,7 @@ function playCards(roomManager, socketId, { roomId, cards, discardCards = [], pa
     room.isElevenBack = false;
     room.lockedSuit = null;
     room.lockedNumber = null;
+    room.lockedNumberSuits = null;
     room.passCount = 0;
     room.actionMessage = `【禁止上がり！】${currentPlayer.name} は ${finishCheck.reason} 反則負けで最下位になりました！`;
     room.turnIndex = getNextTurnIndex(room, room.turnIndex);
@@ -360,6 +364,7 @@ function playCards(roomManager, socketId, { roomId, cards, discardCards = [], pa
     room.isElevenBack = false;
     room.lockedSuit = null;
     room.lockedNumber = null;
+    room.lockedNumberSuits = null;
     if (currentPlayer.hand.length === 0) room.turnIndex = getNextTurnIndex(room, room.turnIndex);
   } else {
     room.fieldCards = playedCards;
@@ -402,6 +407,7 @@ function passTurn(roomManager, socketId, roomId) {
     room.isElevenBack = false;
     room.lockedSuit = null;
     room.lockedNumber = null;
+    room.lockedNumberSuits = null;
     room.passCount = 0;
     const lastPlayer = room.players[room.lastPlayedIndex];
     room.turnIndex = lastPlayer?.hand.length > 0
