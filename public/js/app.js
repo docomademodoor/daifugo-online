@@ -263,6 +263,34 @@ if (typeof ResizeObserver !== 'undefined') {
 }
 
 const RECOVERY_KEY = 'daifugo-room-recovery-v1';
+let hasSocketConnected = false;
+let roomSyncSocketId = '';
+
+function rejoinActiveRoom() {
+  if (!socket.connected || !myRoomId || !myPlayerId || roomSyncSocketId === socket.id) return;
+
+  let recovery = {};
+  try {
+    recovery = JSON.parse(localStorage.getItem(RECOVERY_KEY) || '{}');
+  } catch (error) {
+    console.warn('再接続情報の読み込みに失敗しました:', error);
+  }
+
+  const playerName = recovery.roomId === myRoomId
+    ? recovery.playerName
+    : document.getElementById('join-player-name')?.value
+      || document.getElementById('create-player-name')?.value;
+  if (!playerName) return;
+
+  roomSyncSocketId = socket.id;
+  socket.emit('join-room', { roomId: myRoomId, playerName, playerId: myPlayerId });
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) rejoinActiveRoom();
+});
+
+window.addEventListener('pageshow', rejoinActiveRoom);
 
 const RULE_LABELS = {
   eightCut: '8切り',
@@ -431,8 +459,12 @@ function getClockwiseOpponentOrder(players, currentPlayerId) {
 }
 
 socket.on('connect', () => {
+  const isReconnect = hasSocketConnected;
+  hasSocketConnected = true;
   myId = socket.id;
+  roomSyncSocketId = '';
   console.log('Socket接続成功: ID =', myId);
+  if (isReconnect) rejoinActiveRoom();
 });
 
 // エラー表示処理（アラートを使わずページ上に表示）
