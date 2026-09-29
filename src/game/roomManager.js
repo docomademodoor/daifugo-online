@@ -172,7 +172,7 @@ class RoomManager {
 
     const cpuNumber = room.nextCpuNumber++;
     const cpuId = `cpu-${room.id}-${cpuNumber}`;
-    const cpuDifficulty = ['easy', 'normal', 'hard'].includes(difficulty) ? difficulty : 'normal';
+    const cpuDifficulty = ['easy', 'normal', 'hard', 'strongest'].includes(difficulty) ? difficulty : 'normal';
     room.players.push({
       ...createCpuPlayer({ id: cpuId, name: `CPU ${cpuNumber}`, difficulty: cpuDifficulty })
     });

@@ -228,6 +228,17 @@ describe('CPU seats and room lock', () => {
     expect(roomManager.getPublicState(result.room).players[1].difficulty).toBe('hard');
   });
 
+  it('既存の3段階と別の最強CPU難易度を保持する', () => {
+    roomManager.rooms = {};
+    roomManager.createRoom({ id: 'host' }, { roomId: 'cpu-strongest', playerName: 'Host', playerId: 'host-player', rules: {} });
+
+    const result = roomManager.addCpuPlayer('host', 'cpu-strongest', 'strongest');
+
+    expect(result.success).toBe(true);
+    expect(result.room.players[1].difficulty).toBe('strongest');
+    expect(roomManager.getPublicState(result.room).players[1].difficulty).toBe('strongest');
+  });
+
   it('空席がある場合はCPUを残したまま人間が参加する', () => {
     roomManager.rooms = {};
     roomManager.createRoom({ id: 'host' }, { roomId: 'cpu-replace', playerName: 'Host', playerId: 'host-player', rules: {} });

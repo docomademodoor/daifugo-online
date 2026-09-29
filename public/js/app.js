@@ -12,6 +12,7 @@ let pendingExchangeSelection = null;
 let activeJoinRequest = null;
 let latestGameState = null;
 let previousFieldCards = [];
+let previousFieldCardsTimer = null;
 let turnCountdownInterval = null;
 let diceRollAnimationTimer = null;
 let diceRollAnimationInterval = null;
@@ -24,6 +25,13 @@ let roomChatUnreadCount = 0;
 const TABLE_SEAT_GAP = 20;
 const CHINCHIRO_ROLL_ANIMATION_MS = 2000;
 const ROOM_CHAT_MAX_LENGTH = 200;
+
+function clearPreviousFieldCards() {
+  if (previousFieldCardsTimer) clearTimeout(previousFieldCardsTimer);
+  previousFieldCardsTimer = null;
+  previousFieldCards = [];
+  document.getElementById('previous-field-card')?.classList.remove('is-recent-clear');
+}
 
 function clearSelectionState() {
   selectedCardIds.clear();
@@ -372,7 +380,8 @@ const ROLE_POINTS = {
 const CPU_DIFFICULTY_LABELS = {
   easy: 'かんたん',
   normal: 'ふつう',
-  hard: '強い'
+  hard: '強い',
+  strongest: '最強（記憶）'
 };
 
 const GAME_LABELS = {
@@ -833,7 +842,7 @@ function resetToLobbyView() {
   pendingExchangeSelection = null;
   setRoomChatRoom('');
   latestGameState = null;
-  previousFieldCards = [];
+  clearPreviousFieldCards();
   currentHand = [];
   selectedCardIds.clear();
 }
@@ -1083,7 +1092,7 @@ socket.on('game-started', (data) => {
   myRoomId = data.roomId;
   setRoomChatRoom(myRoomId);
   document.body.classList.add('game-active');
-  previousFieldCards = [];
+  clearPreviousFieldCards();
   document.getElementById('lobby-container').style.display = 'none';
   document.getElementById('game-container').style.display = window.matchMedia('(max-width: 640px)').matches
     ? 'flex'
@@ -1122,15 +1131,34 @@ socket.on('state-updated', (data) => {
     return previousPlayer && (player.rollsUsed || 0) > (previousPlayer.rollsUsed || 0);
   });
   const newFieldCards = data.fieldCards || [];
+  const clearedFieldCards = data.clearedFieldCards || [];
   const fieldChanged = oldFieldCards.length !== newFieldCards.length
     || oldFieldCards.some((card, index) => card.id !== newFieldCards[index]?.id);
 
-  if (newFieldCards.length === 0) {
-    previousFieldCards = [];
-  } else if (oldFieldCards.length > 0 && fieldChanged) {
-    previousFieldCards = [...oldFieldCards];
-  } else if (oldFieldCards.length === 0) {
-    previousFieldCards = [];
+  if (newFieldCards.length > 0) {
+    clearPreviousFieldCards();
+    if (oldFieldCards.length > 0 && fieldChanged) {
+      previousFieldCards = [...oldFieldCards];
+    }
+  } else {
+    const cardsToShow = clearedFieldCards.length > 0 ? clearedFieldCards : oldFieldCards;
+    if (cardsToShow.length > 0) {
+      if (previousFieldCardsTimer) clearTimeout(previousFieldCardsTimer);
+      previousFieldCards = [...cardsToShow];
+      previousFieldCardsTimer = setTimeout(() => {
+        previousFieldCardsTimer = null;
+        if ((latestGameState?.fieldCards || []).length > 0) return;
+        previousFieldCards = [];
+        const previousFieldEl = document.getElementById('previous-field-card');
+        if (previousFieldEl) {
+          previousFieldEl.innerHTML = '';
+          previousFieldEl.style.display = 'none';
+          previousFieldEl.classList.remove('is-recent-clear');
+        }
+      }, 1800);
+    } else if (!previousFieldCardsTimer) {
+      previousFieldCards = [];
+    }
   }
 
   if (didRollChinchiroDice) {
@@ -1297,12 +1325,14 @@ function updateUI(data) {
     if (previousFieldEl) {
       previousFieldEl.innerHTML = previousFieldCards.map(card => renderCard(card, false)).join('');
       previousFieldEl.style.display = previousFieldCards.length > 0 ? 'flex' : 'none';
+      previousFieldEl.classList.remove('is-recent-clear');
     }
   } else {
     fieldEl.innerHTML = '<span style="color: #bbb;">（場は流れています。好きなカードを出せます）</span>';
     if (previousFieldEl) {
-      previousFieldEl.innerHTML = '';
-      previousFieldEl.style.display = 'none';
+      previousFieldEl.innerHTML = previousFieldCards.map(card => renderCard(card, false)).join('');
+      previousFieldEl.style.display = previousFieldCards.length > 0 ? 'flex' : 'none';
+      previousFieldEl.classList.toggle('is-recent-clear', previousFieldCards.length > 0);
     }
   }
 

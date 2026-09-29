@@ -1,4 +1,5 @@
 const { checkForbiddenFinish, countEffectiveRank, getPlayStrength, isValidCombination, isValidPlay } = require('./rules');
+const { createDeck } = require('../../utils/deck');
 
 const CARD_VALUES = {
   '3': 3,
@@ -94,6 +95,21 @@ function getPlayCandidates(hand, playCount, rules) {
   return candidates;
 }
 
+function getUnseenCards(room, hand, rules) {
+  const knownCardIds = new Set([
+    ...(room.playedCardIds || []),
+    ...(room.fieldCards || []).map(card => card.id),
+    ...hand.map(card => card.id)
+  ]);
+  return createDeck(rules.includeJoker !== false).filter(card => !knownCardIds.has(card.id));
+}
+
+function countBeatingCandidates(cards, unseenCards, rules, state) {
+  return getPlayCandidates(unseenCards, cards.length, rules)
+    .filter(candidate => isValidPlay(candidate, cards, rules, state).valid)
+    .length;
+}
+
 function getPreservedGroupScore(hand, playedCards) {
   const playedIds = new Set(playedCards.map(card => card.id));
   const remainingGroups = new Map();
@@ -118,7 +134,7 @@ function chooseCpuAction(room, player) {
   const rules = room.rules || {};
   const fieldCards = room.fieldCards || [];
   const playCount = fieldCards.length || 1;
-  const difficulty = ['easy', 'normal', 'hard'].includes(player.difficulty) ? player.difficulty : 'normal';
+  const difficulty = ['easy', 'normal', 'hard', 'strongest'].includes(player.difficulty) ? player.difficulty : 'normal';
   const random = typeof player.random === 'function' ? player.random : Math.random;
   const mustPlayDiamondThree = hand.some(card => card.id === '♦3');
   const state = {
@@ -128,7 +144,7 @@ function chooseCpuAction(room, player) {
     lockedNumber: room.lockedNumber,
     lockedNumberSuits: room.lockedNumberSuits
   };
-  const playCounts = fieldCards.length === 0 && difficulty === 'hard'
+  const playCounts = fieldCards.length === 0 && ['hard', 'strongest'].includes(difficulty)
     ? Array.from({ length: Math.min(4, hand.length) }, (_, index) => index + 1)
     : [playCount];
   const candidates = playCounts.flatMap(count => getPlayCandidates(hand, count, rules))
@@ -154,6 +170,28 @@ function chooseCpuAction(room, player) {
   if (difficulty === 'easy') {
     const cards = pickRandom(choices, random);
     return buildPlayAction(cards, hand, rules);
+  }
+
+  if (difficulty === 'strongest') {
+    const unseenCards = getUnseenCards(room, hand, rules);
+    const scoredChoices = choices.map(cards => ({
+      cards,
+      threats: countBeatingCandidates(cards, unseenCards, rules, state),
+      preservedGroups: getPreservedGroupScore(hand, cards),
+      strength: getPlayStrength(cards)
+    }));
+    scoredChoices.sort((left, right) => {
+      if (fieldCards.length === 0 && left.cards.length !== right.cards.length) {
+        return right.cards.length - left.cards.length;
+      }
+      if (left.threats !== right.threats) return left.threats - right.threats;
+      if (left.preservedGroups !== right.preservedGroups) {
+        return right.preservedGroups - left.preservedGroups;
+      }
+      const strengthDifference = left.strength - right.strength;
+      return isReversed ? -strengthDifference : strengthDifference;
+    });
+    return buildPlayAction(scoredChoices[0].cards, hand, rules);
   }
 
   choices.sort((left, right) => {
@@ -192,7 +230,7 @@ function chooseCpuExchangeCards(hand, count, difficulty = 'normal', random = Mat
   }
 
   const cards = [...hand].sort((a, b) => a.strength - b.strength);
-  if (difficulty !== 'hard') return cards.slice(0, count);
+  if (!['hard', 'strongest'].includes(difficulty)) return cards.slice(0, count);
 
   return cards.sort((a, b) => {
     const aGroupCount = hand.filter(card => card.id !== a.id && card.num === a.num).length;

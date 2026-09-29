@@ -52,6 +52,26 @@ describe('CPU player decisions', () => {
     });
   });
 
+  it('最強CPUは既出の高札を記憶して返されにくい札を選ぶ', () => {
+    const hand = [
+      { id: '♠1', suit: '♠', num: 'A', strength: 12 },
+      { id: '♠2', suit: '♠', num: '2', strength: 13 }
+    ];
+    const king = { id: '♣13', suit: '♣', num: 'K', strength: 11 };
+    const room = {
+      rules: { ...baseRules, includeJoker: false },
+      fieldCards: [king],
+      playedCardIds: [king.id],
+      isRevolution: false,
+      isElevenBack: false
+    };
+
+    expect(chooseCpuAction(room, { hand, difficulty: 'strongest' }).cards[0].id).toBe('♠2');
+
+    room.playedCardIds.push('♥2', '♦2', '♣2');
+    expect(chooseCpuAction(room, { hand, difficulty: 'strongest' }).cards[0].id).toBe('♠1');
+  });
+
   it('10を出したら残りから10捨て対象を選ぶ', () => {
     const hand = [
       { id: 'ten', suit: '♥', num: 10, strength: 8 },
@@ -107,5 +127,15 @@ describe('CPU player decisions', () => {
     ];
 
     expect(chooseCpuExchangeCards(hand, 1, 'easy', () => 0.99).map(card => card.id)).toEqual(['strong']);
+  });
+
+  it('最強CPUは交換時もペアを維持する', () => {
+    const hand = [
+      { id: 'pair-a', suit: '♠', num: 3, strength: 1 },
+      { id: 'pair-b', suit: '♥', num: 3, strength: 1 },
+      { id: 'single', suit: '♣', num: 'K', strength: 11 }
+    ];
+
+    expect(chooseCpuExchangeCards(hand, 1, 'strongest').map(card => card.id)).toEqual(['single']);
   });
 });

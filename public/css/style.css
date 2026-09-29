@@ -1078,6 +1078,21 @@ input[type="text"]:focus {
   pointer-events: none;
 }
 
+.previous-field-card.is-recent-clear {
+  justify-content: center;
+  gap: 4px;
+  opacity: 0.9;
+}
+
+.previous-field-card.is-recent-clear .card {
+  flex-basis: 44px;
+  width: 44px;
+  height: 64px;
+  font-size: 16px;
+  line-height: 64px;
+  transform: none;
+}
+
 .previous-field-card .card {
   flex: 0 0 32px;
   width: 32px;

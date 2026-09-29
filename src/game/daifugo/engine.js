@@ -9,6 +9,7 @@ const ROLE_POINTS = {
   '貧民': -1,
   '大貧民': -2
 };
+const CLEARED_FIELD_DISPLAY_MS = 1800;
 
 function requiresDiamondThreeForOpeningPlay(room, player) {
   return !!player
@@ -20,6 +21,9 @@ function requiresDiamondThreeForOpeningPlay(room, player) {
 
 function startRound(roomManager, room) {
   room.fieldCards = [];
+  room.playedCardIds = [];
+  room.clearedFieldCards = [];
+  room.clearedFieldAt = null;
   room.passCount = 0;
   room.lastPlayedIndex = 0;
   room.isRevolution = false;
@@ -83,6 +87,9 @@ function getPublicState(room) {
   const currentPlayer = room.players[room.turnIndex];
   return {
     fieldCards: room.fieldCards,
+    clearedFieldCards: room.clearedFieldAt && Date.now() - room.clearedFieldAt <= CLEARED_FIELD_DISPLAY_MS
+      ? room.clearedFieldCards || []
+      : [],
     isRevolution: room.isRevolution,
     isElevenBack: room.isElevenBack,
     isReversed: (!!room.isRevolution) !== (!!room.isElevenBack),
@@ -335,6 +342,10 @@ function playCards(roomManager, socketId, { roomId, cards, discardCards = [], pa
   const passSet = new Set(passIds);
   const passedCardsList = currentPlayer.hand.filter(card => passSet.has(card.id));
   const discardedCardsList = currentPlayer.hand.filter(card => discardSet.has(card.id));
+  const playedCardIds = new Set(room.playedCardIds || []);
+  playedCards.forEach(card => playedCardIds.add(card.id));
+  discardedCardsList.forEach(card => playedCardIds.add(card.id));
+  room.playedCardIds = [...playedCardIds];
   currentPlayer.hand = currentPlayer.hand.filter(card => !playedIdSet.has(card.id));
   currentPlayer.hand = currentPlayer.hand.filter(card => !discardSet.has(card.id));
   currentPlayer.hand = currentPlayer.hand.filter(card => !passSet.has(card.id));
@@ -359,6 +370,8 @@ function playCards(roomManager, socketId, { roomId, cards, discardCards = [], pa
   }
 
   if (effects.clearField) {
+    room.clearedFieldCards = [...playedCards];
+    room.clearedFieldAt = Date.now();
     room.fieldCards = [];
     room.passCount = 0;
     room.isElevenBack = false;
@@ -367,6 +380,8 @@ function playCards(roomManager, socketId, { roomId, cards, discardCards = [], pa
     room.lockedNumberSuits = null;
     if (currentPlayer.hand.length === 0) room.turnIndex = getNextTurnIndex(room, room.turnIndex);
   } else {
+    room.clearedFieldCards = [];
+    room.clearedFieldAt = null;
     room.fieldCards = playedCards;
     room.lastPlayedIndex = room.turnIndex;
     room.passCount = 0;
@@ -394,6 +409,8 @@ function passTurn(roomManager, socketId, roomId) {
 
   room.firstTurnExemptPlayerId = null;
   if (room.fieldCards.length === 0) {
+    room.clearedFieldCards = [];
+    room.clearedFieldAt = null;
     room.passCount = 0;
     room.turnIndex = getNextTurnIndex(room, room.turnIndex);
     room.actionMessage = `${currentPlayer.name} がパスしました。`;
@@ -401,8 +418,12 @@ function passTurn(roomManager, socketId, roomId) {
   }
 
   const activePlayers = room.players.filter(player => player.hand.length > 0);
+  room.clearedFieldCards = [];
+  room.clearedFieldAt = null;
   room.passCount++;
   if (room.passCount >= activePlayers.length - 1) {
+    room.clearedFieldCards = [...room.fieldCards];
+    room.clearedFieldAt = Date.now();
     room.fieldCards = [];
     room.isElevenBack = false;
     room.lockedSuit = null;

@@ -75,10 +75,40 @@ describe('カードルール判定', () => {
     const openingPlay = RoomManager.playCards(player.id, { roomId, cards: staircase });
     expect(openingPlay.success).toBe(false);
     expect(openingPlay.message).toContain('♦3');
+    expect(room.playedCardIds).toBeUndefined();
 
     room.firstTurnExemptPlayerId = null;
     expect(RoomManager.getPublicState(room).mustPlayDiamondThree).toBe(false);
     expect(RoomManager.playCards(player.id, { roomId, cards: staircase }).success).toBe(true);
+    expect(room.playedCardIds).toEqual(staircase.map(card => card.id));
+  });
+
+  it('空場の8切りでも場を流したカードを公開状態に残す', () => {
+    const roomId = 'cleared-field-display-test';
+    RoomManager.rooms = {};
+    RoomManager.createRoom({ id: 'sA' }, { roomId, playerName: 'A', playerId: 'p1', rules: {} });
+    RoomManager.joinRoom({ id: 'sB' }, { roomId, playerName: 'B', playerId: 'p2' });
+
+    const room = RoomManager.rooms[roomId];
+    const player = room.players[0];
+    const eight = { id: 'spade-8', suit: '♠', num: 8, strength: 6 };
+    room.status = 'playing';
+    room.turnIndex = 0;
+    room.fieldCards = [];
+    room.rules.eightCut = true;
+    room.rules.forbiddenFinish = false;
+    room.rules.spe3 = false;
+    room.rules.fiveSkip = false;
+    room.rules.tenDiscard = false;
+    room.rules.sevenPass = false;
+    player.hand = [eight, { id: 'heart-3', suit: '♥', num: 3, strength: 1 }];
+    room.players[1].hand = [{ id: 'club-9', suit: '♣', num: 9, strength: 7 }];
+
+    const result = RoomManager.playCards(player.id, { roomId, cards: [eight.id] });
+
+    expect(result.success).toBe(true);
+    expect(room.fieldCards).toEqual([]);
+    expect(RoomManager.getPublicState(room).clearedFieldCards).toEqual([eight]);
   });
 
   it('ジョーカーを階段の穴埋めに使える', () => {
