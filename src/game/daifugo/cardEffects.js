@@ -41,7 +41,7 @@ function applyCardEffects(room, currentPlayer, playedCards, validation, selectio
     room.isRevolution = !room.isRevolution;
     actionLogs.push(
       room.isRevolution
-        ? '【革命発動！】カードの強さが反転しました！（3が最強）'
+        ? '【革命！】強さが逆転、3が最強！'
         : '【革命返し！】通常の強さに戻りました！'
     );
   }
@@ -83,7 +83,7 @@ function applyCardEffects(room, currentPlayer, playedCards, validation, selectio
     room.isElevenBack = !room.isElevenBack;
     actionLogs.push(
       room.isElevenBack
-        ? '【Jバック発動！】場が流れるまで強さ逆転（3が最強）'
+        ? '【Jバック！】場が流れるまで強さ逆転、3が最強！'
         : '【Jバック解除！】通常に戻りました'
     );
   }
@@ -94,11 +94,11 @@ function applyCardEffects(room, currentPlayer, playedCards, validation, selectio
     const players = Array.isArray(room.players) ? room.players : [];
     const otherActivePlayers = players.filter(p => p.id !== currentPlayer.id && p.hand.length > 0).length;
     skipCount = Math.min(playedCards.length + 1, otherActivePlayers + 1);
-    const selfTurnNote = skipCount >= otherActivePlayers + 1 ? '（人数超過で自分の番に戻る）' : '';
+    const selfTurnNote = skipCount >= otherActivePlayers + 1 ? '。自分の番に戻ります' : '';
     if (skipCount >= otherActivePlayers + 1) {
       clearField = true;
     }
-    actionLogs.push(`【5飛び！】${playedCards.length}枚分、${skipCount - 1}人スキップ${selfTurnNote}！`);
+    actionLogs.push(`【5飛び】${playedCards.length}枚で${skipCount - 1}人飛ばし${selfTurnNote}！`);
   }
 
   // 6. 10捨て (10を出した枚数分だけ、手札から不要なカードを破棄)

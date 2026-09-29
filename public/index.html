@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@400;500;700;800&amp;display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/css/style.css?v=3.15">
+  <link rel="stylesheet" href="/css/style.css?v=3.65">
   <script src="/socket.io/socket.io.js"></script>
 </head>
 <body>
@@ -215,7 +215,6 @@
     <!-- 状況通知バナー（革命、11バック、縛りなど） -->
     <div id="game-status-banner" class="status-banner" role="status" aria-live="polite" style="display:none;">
       <div id="game-status-tags" class="game-status-tags"></div>
-      <p id="game-action-message" class="game-action-message"></p>
     </div>
 
     <section id="chinchiro-board" class="chinchiro-board" style="display:none;" aria-labelledby="chinchiro-heading">
@@ -270,6 +269,7 @@
         <div id="previous-field-card" class="previous-field-card" aria-hidden="true" style="display:none;"></div>
         <div id="field" class="field-cards"></div>
         <div id="suit-lock-indicator" class="lock-indicator" style="display:none;"></div>
+        <p id="game-action-message" class="game-action-message" role="status" aria-live="polite"></p>
       </div>
 
       <!-- 他プレイヤー状態 -->
@@ -295,9 +295,6 @@
 
     <!-- 自分の手札 -->
     <div class="hand-section">
-      <div class="hand-header">
-        <h3>手札 <small>カードを選択</small></h3>
-      </div>
       <div id="hand" class="hand-cards"></div>
     </div>
 
@@ -355,6 +352,35 @@
     </div>
   </div>
 
-  <script src="/js/app.js?v=2.38"></script>
+  <div id="room-chat-root" class="room-chat-root" hidden>
+    <section id="room-chat-panel" class="room-chat-panel" aria-label="ルームチャット" hidden>
+      <header class="room-chat-header">
+        <div>
+          <h2>ルームチャット</h2>
+          <span id="room-chat-room-label"></span>
+        </div>
+        <button id="room-chat-close" class="room-chat-close" type="button" aria-label="チャットを閉じる">閉じる</button>
+      </header>
+      <ol id="room-chat-messages" class="room-chat-messages" role="log" aria-live="polite" aria-relevant="additions"></ol>
+      <p id="room-chat-status" class="room-chat-status" role="status" aria-live="polite"></p>
+      <form id="room-chat-form" class="room-chat-form">
+        <label class="visually-hidden" for="room-chat-input">メッセージ</label>
+        <textarea id="room-chat-input" rows="2" placeholder="メッセージを入力"></textarea>
+        <div class="room-chat-compose-footer">
+          <span id="room-chat-count" class="room-chat-count">0 / 200</span>
+          <button id="room-chat-submit" class="primary-btn" type="submit" disabled>送信</button>
+        </div>
+      </form>
+    </section>
+    <div class="room-chat-controls">
+      <ol id="room-chat-recent" class="room-chat-recent" aria-label="直近のメッセージ" aria-hidden="true"></ol>
+      <button id="room-chat-toggle" class="room-chat-toggle" type="button" aria-expanded="false" aria-controls="room-chat-panel" aria-label="チャットを開く" title="チャットを開く">
+        <span aria-hidden="true">💬</span>
+        <span id="room-chat-unread" class="room-chat-unread" aria-label="未読メッセージ" hidden></span>
+      </button>
+    </div>
+  </div>
+
+  <script src="/js/app.js?v=2.58"></script>
 </body>
 </html>

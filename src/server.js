@@ -3,6 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const roomManager = require('./game/roomManager');
+const { RoomChat } = require('./game/roomChat');
 const { chooseCpuAction, chooseCpuExchangeCards } = require('./game/daifugo/cpuPlayer');
 const { isValidPlay } = require('./game/daifugo/rules');
 
@@ -11,6 +12,7 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: { origin: '*' }
 });
+const roomChat = new RoomChat(roomManager);
 const cpuTurnTimers = new Map();
 const CPU_TURN_DELAY_MS = Math.max(0, Number(process.env.CPU_TURN_DELAY_MS) || 1200);
 const CHINCHIRO_CPU_INITIAL_DELAY_MS = Math.max(700, Number(process.env.CHINCHIRO_CPU_INITIAL_DELAY_MS) || 900);
@@ -61,21 +63,7 @@ function scheduleHumanTurnTimer(roomId) {
     }
 
     currentRoom.turnDeadlineAt = null;
-    const action = currentRoom.fieldCards.length === 0
-      ? { type: 'pass' }
-      : chooseCpuAction(currentRoom, currentPlayer);
-    let result = action.type === 'play'
-      ? roomManager.playCards(currentPlayer.id, {
-        roomId,
-        cards: action.cards,
-        discardCards: action.discardCards,
-        passedCards: action.passedCards
-      })
-      : roomManager.passTurn(currentPlayer.id, roomId);
-
-    if (!result.success && currentRoom.fieldCards.length > 0) {
-      result = roomManager.passTurn(currentPlayer.id, roomId);
-    }
+    const result = roomManager.passTurn(currentPlayer.id, roomId);
 
     if (!result.success) {
       currentRoom.actionMessage = `${currentPlayer.name} は時間切れです。${result.message}`;
@@ -84,8 +72,11 @@ function scheduleHumanTurnTimer(roomId) {
       return;
     }
 
-    const actionMessage = result.room.actionMessage || '';
-    result.room.actionMessage = `${currentPlayer.name} は時間切れのため自動で${action.type === 'pass' ? 'パスしました' : 'プレイしました'}。 ${actionMessage}`.trim();
+    const passMessage = result.room.actionMessage || '';
+    result.room.actionMessage = `${currentPlayer.name} は時間切れで自動パスしました。`;
+    if (passMessage !== `${currentPlayer.name} がパスしました。`) {
+      result.room.actionMessage += ` ${passMessage}`;
+    }
     scheduleHumanTurnTimer(roomId);
     io.to(roomId).emit('state-updated', roomManager.getPublicState(result.room));
     if (result.updatedHand) io.to(currentPlayer.id).emit('hand-updated', result.updatedHand);
@@ -193,6 +184,25 @@ function scheduleCpuTurn(roomId) {
 
 io.on('connection', (socket) => {
   console.log('ユーザー接続:', socket.id);
+
+  socket.on('room-chat-history-request', (roomId) => {
+    const result = roomChat.getHistory(socket, roomId);
+    if (!result.success) {
+      socket.emit('room-chat-error', result.message);
+      return;
+    }
+    socket.emit('room-chat-history', { roomId, messages: result.messages });
+  });
+
+  socket.on('room-chat-send', (payload = {}) => {
+    const { roomId, text } = payload || {};
+    const result = roomChat.send(socket, roomId, text);
+    if (!result.success) {
+      socket.emit('room-chat-error', result.message);
+      return;
+    }
+    io.to(roomId).emit('room-chat-message', result.message);
+  });
 
   // ルーム新規作成
   socket.on('create-room', ({ roomId, playerName, playerId, rules, gameType }) => {
@@ -374,6 +384,7 @@ io.on('connection', (socket) => {
     }
 
     io.to(roomId).emit('room-closed', { roomId });
+    roomChat.deleteRoom(roomId);
     io.in(roomId).socketsLeave(roomId);
     const timer = cpuTurnTimers.get(roomId);
     if (timer) clearTimeout(timer);
@@ -500,7 +511,11 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log('ユーザー切断:', socket.id);
     const playerId = socket.data.playerId || null;
+    const connectedRoomIds = [...socket.rooms].filter(roomId => roomManager.rooms[roomId]);
     const updatedRoom = roomManager.leaveRoom(socket.id, playerId);
+    connectedRoomIds.forEach(roomId => {
+      if (!roomManager.rooms[roomId]) roomChat.deleteRoom(roomId);
+    });
     if (updatedRoom) {
       if (updatedRoom.pendingSideSelection?.playerId === socket.id) {
         updatedRoom.pendingSideSelection = null;

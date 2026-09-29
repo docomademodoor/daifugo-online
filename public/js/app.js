@@ -18,12 +18,239 @@ let isDiceRollAnimating = false;
 let animatedChinchiroPlayerId = null;
 let animatedDiceResult = null;
 let errorTimer = null;
+let roomChatLoadedFor = '';
+let roomChatUnreadCount = 0;
 const TABLE_SEAT_GAP = 20;
 const CHINCHIRO_ROLL_ANIMATION_MS = 2000;
+const ROOM_CHAT_MAX_LENGTH = 200;
 
 function clearSelectionState() {
   selectedCardIds.clear();
   pendingSideSelection = null;
+}
+
+function updateRoomChatUnread() {
+  const badge = document.getElementById('room-chat-unread');
+  if (!badge) return;
+  badge.hidden = roomChatUnreadCount === 0;
+  badge.textContent = roomChatUnreadCount > 99 ? '99+' : String(roomChatUnreadCount);
+}
+
+function updateRoomChatRecent() {
+  const preview = document.getElementById('room-chat-recent');
+  const list = document.getElementById('room-chat-messages');
+  if (!preview || !list) return;
+
+  preview.replaceChildren();
+  [...list.querySelectorAll('.room-chat-message')].slice(-2).forEach(message => {
+    const senderName = message.querySelector('.room-chat-message-meta strong')?.textContent || '';
+    const messageText = message.querySelector('p')?.textContent || '';
+    const item = document.createElement('li');
+    item.title = `${senderName}: ${messageText}`;
+    const sender = document.createElement('strong');
+    sender.textContent = senderName;
+    const text = document.createElement('span');
+    text.textContent = messageText;
+    item.append(sender, text);
+    preview.appendChild(item);
+  });
+}
+
+function updateRoomChatPosition() {
+  const root = document.getElementById('room-chat-root');
+  const turnControls = document.querySelector('.turn-control-section');
+  const chinchiroControls = document.querySelector('#chinchiro-board .chinchiro-controls');
+  const handSection = document.querySelector('.hand-section');
+  if (!root || root.hidden) return;
+
+  if (!document.body.classList.contains('game-active')) {
+    root.style.bottom = '';
+    root.style.removeProperty('--room-chat-max-panel-height');
+    return;
+  }
+
+  const turnActions = turnControls?.querySelector('.control-actions');
+  const isActionDock = window.matchMedia('(max-width: 640px)').matches
+    && !document.body.classList.contains('chinchiro-mode')
+    && turnControls
+    && getComputedStyle(turnControls).display !== 'none'
+    && turnActions;
+  root.classList.toggle('is-action-dock', !!isActionDock);
+
+  if (isActionDock) {
+    const sectionRect = turnControls.getBoundingClientRect();
+    const actionsRect = turnActions.getBoundingClientRect();
+    const rootControlsHeight = document.querySelector('.room-chat-controls')?.getBoundingClientRect().height || 44;
+    root.style.left = 'auto';
+    root.style.right = `${Math.max(8, window.innerWidth - sectionRect.right + 10)}px`;
+    root.style.bottom = `${Math.max(8, window.innerHeight - actionsRect.bottom)}px`;
+    root.style.setProperty('--room-chat-max-panel-height', `${Math.max(160, Math.floor(actionsRect.top - rootControlsHeight - 24))}px`);
+    return;
+  }
+
+  root.classList.remove('is-action-dock');
+  root.style.left = '';
+  root.style.right = '';
+
+  const controlSection = document.body.classList.contains('chinchiro-mode')
+    ? chinchiroControls
+    : turnControls;
+  const anchorTop = controlSection && getComputedStyle(controlSection).display !== 'none'
+    ? controlSection.getBoundingClientRect().top
+    : handSection?.getBoundingClientRect().top;
+  if (anchorTop === undefined) {
+    root.style.bottom = '';
+    root.style.removeProperty('--room-chat-max-panel-height');
+    return;
+  }
+
+  const controlsHeight = document.querySelector('.room-chat-controls')?.getBoundingClientRect().height || 48;
+  const maxPanelHeight = Math.max(160, Math.floor(anchorTop - controlsHeight - 32));
+  root.style.setProperty('--room-chat-max-panel-height', `${maxPanelHeight}px`);
+  root.style.bottom = `${Math.max(8, window.innerHeight - anchorTop + 12)}px`;
+}
+
+function scheduleRoomChatPosition() {
+  window.requestAnimationFrame(updateRoomChatPosition);
+}
+
+function setRoomChatOpen(isOpen) {
+  const panel = document.getElementById('room-chat-panel');
+  const toggle = document.getElementById('room-chat-toggle');
+  if (!panel || !toggle) return;
+
+  panel.hidden = !isOpen;
+  toggle.setAttribute('aria-expanded', String(isOpen));
+  toggle.setAttribute('aria-label', isOpen ? 'チャットを閉じる' : 'チャットを開く');
+  toggle.title = isOpen ? 'チャットを閉じる' : 'チャットを開く';
+  if (isOpen) {
+    roomChatUnreadCount = 0;
+    updateRoomChatUnread();
+    const messages = document.getElementById('room-chat-messages');
+    if (messages) messages.scrollTop = messages.scrollHeight;
+    document.getElementById('room-chat-input')?.focus({ preventScroll: true });
+  }
+  scheduleRoomChatPosition();
+}
+
+function setRoomChatRoom(roomId) {
+  const root = document.getElementById('room-chat-root');
+  if (!root) return;
+  if (!roomId) {
+    root.hidden = true;
+    setRoomChatOpen(false);
+    roomChatLoadedFor = '';
+    roomChatUnreadCount = 0;
+    updateRoomChatUnread();
+    document.getElementById('room-chat-messages')?.replaceChildren();
+    document.getElementById('room-chat-recent')?.replaceChildren();
+    document.getElementById('room-chat-status').textContent = '';
+    return;
+  }
+
+  root.hidden = false;
+  if (roomChatLoadedFor === roomId) return;
+  setRoomChatOpen(false);
+  roomChatLoadedFor = roomId;
+  roomChatUnreadCount = 0;
+  updateRoomChatUnread();
+  document.getElementById('room-chat-room-label').textContent = `ルーム ${roomId}`;
+  document.getElementById('room-chat-messages')?.replaceChildren();
+  document.getElementById('room-chat-recent')?.replaceChildren();
+  document.getElementById('room-chat-status').textContent = '';
+  socket.emit('room-chat-history-request', roomId);
+  scheduleRoomChatPosition();
+}
+
+function appendRoomChatMessage(message) {
+  const list = document.getElementById('room-chat-messages');
+  if (!list) return;
+
+  const item = document.createElement('li');
+  item.className = `room-chat-message${message.senderId === socket.id ? ' is-mine' : ''}`;
+  const meta = document.createElement('div');
+  meta.className = 'room-chat-message-meta';
+  const sender = document.createElement('strong');
+  sender.textContent = message.senderName;
+  const time = document.createElement('time');
+  const timestamp = new Date(Number(message.sentAt) || Date.now());
+  time.dateTime = timestamp.toISOString();
+  time.textContent = timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const text = document.createElement('p');
+  text.textContent = message.text;
+  meta.append(sender, time);
+  item.append(meta, text);
+  list.appendChild(item);
+  while (list.children.length > 50) list.firstElementChild.remove();
+  list.scrollTop = list.scrollHeight;
+  updateRoomChatRecent();
+}
+
+function updateRoomChatComposer() {
+  const input = document.getElementById('room-chat-input');
+  const submit = document.getElementById('room-chat-submit');
+  const count = document.getElementById('room-chat-count');
+  if (!input || !submit || !count) return;
+  const characterCount = Array.from(input.value.trim()).length;
+  count.textContent = `${characterCount} / ${ROOM_CHAT_MAX_LENGTH}`;
+  submit.disabled = characterCount === 0 || characterCount > ROOM_CHAT_MAX_LENGTH;
+  document.getElementById('room-chat-status').textContent = '';
+}
+
+function submitRoomChat(event) {
+  event.preventDefault();
+  const input = document.getElementById('room-chat-input');
+  const status = document.getElementById('room-chat-status');
+  const text = input?.value.trim() || '';
+  const characterCount = Array.from(text).length;
+  if (!myRoomId || !text || characterCount > ROOM_CHAT_MAX_LENGTH) return;
+  socket.emit('room-chat-send', { roomId: myRoomId, text });
+  input.value = '';
+  updateRoomChatComposer();
+  input.focus({ preventScroll: true });
+  if (status) status.textContent = '';
+}
+
+document.getElementById('room-chat-toggle')?.addEventListener('click', () => {
+  setRoomChatOpen(document.getElementById('room-chat-panel').hidden);
+});
+document.getElementById('room-chat-close')?.addEventListener('click', () => setRoomChatOpen(false));
+document.getElementById('room-chat-form')?.addEventListener('submit', submitRoomChat);
+document.getElementById('room-chat-input')?.addEventListener('input', updateRoomChatComposer);
+document.getElementById('room-chat-input')?.addEventListener('keydown', event => {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault();
+    document.getElementById('room-chat-form').requestSubmit();
+  }
+});
+
+socket.on('room-chat-history', ({ roomId, messages = [] } = {}) => {
+  if (roomId !== myRoomId || roomChatLoadedFor !== roomId) return;
+  const list = document.getElementById('room-chat-messages');
+  list.replaceChildren();
+  messages.forEach(appendRoomChatMessage);
+});
+
+socket.on('room-chat-message', message => {
+  if (message.roomId !== myRoomId) return;
+  appendRoomChatMessage(message);
+  if (document.getElementById('room-chat-panel').hidden && message.senderId !== socket.id) {
+    roomChatUnreadCount++;
+    updateRoomChatUnread();
+  }
+});
+
+socket.on('room-chat-error', message => {
+  document.getElementById('room-chat-status').textContent = message;
+});
+
+window.addEventListener('resize', scheduleRoomChatPosition);
+if (typeof ResizeObserver !== 'undefined') {
+  const roomChatPositionObserver = new ResizeObserver(scheduleRoomChatPosition);
+  ['.turn-control-section', '.chinchiro-controls', '.hand-section'].forEach(selector => {
+    const section = document.querySelector(selector);
+    if (section) roomChatPositionObserver.observe(section);
+  });
 }
 
 const RECOVERY_KEY = 'daifugo-room-recovery-v1';
@@ -157,7 +384,11 @@ function getOpponentSeatLayout(playerCount, index, stageWidth, seatWidth, stageH
   const rowIndex = isTopRow ? index : index - topRowCount;
   const rowCount = isTopRow ? topRowCount : safeCount - topRowCount;
   const edgePercent = (seatWidth / 2 / stageWidth) * 100;
-  const rowOffsetPercent = ((fieldHeight + seatHeight) / 2 + TABLE_SEAT_GAP) / stageHeight * 100;
+  const preferredRowOffset = ((fieldHeight + seatHeight) / 2 + TABLE_SEAT_GAP) / stageHeight * 100;
+  const maximumRowOffset = 50 - ((seatHeight / 2 + 8) / stageHeight) * 100;
+  const rowOffsetPercent = window.matchMedia('(max-width: 640px)').matches
+    ? Math.min(preferredRowOffset, maximumRowOffset)
+    : preferredRowOffset;
   const x = rowCount === 1
     ? 50
     : edgePercent + ((100 - edgePercent * 2) * rowIndex) / (rowCount - 1);
@@ -456,6 +687,7 @@ function joinRoom() {
 socket.on('room-joined', (data) => {
   console.log('ルーム入室完了:', data);
   myRoomId = data.room.roomId;
+  setRoomChatRoom(myRoomId);
   myPlayerId = data.playerId || myPlayerId;
   isHost = data.isHost;
   saveRecoveryState();
@@ -586,6 +818,7 @@ function resetToLobbyView() {
 
   clearSelectionState();
   pendingExchangeSelection = null;
+  setRoomChatRoom('');
   latestGameState = null;
   previousFieldCards = [];
   currentHand = [];
@@ -615,6 +848,7 @@ function updateWaitingRoom(room) {
   document.getElementById('waiting-area').style.display = 'block';
 
   myRoomId = room.roomId;
+  setRoomChatRoom(myRoomId);
   document.getElementById('display-room-id').innerText = room.roomId;
   document.getElementById('display-game-type').innerText = GAME_LABELS[room.gameType] || GAME_LABELS.daifugo;
   document.getElementById('player-count').innerText = room.players.length;
@@ -675,6 +909,8 @@ function updateWaitingRoom(room) {
     hostControls.style.display = 'none';
     guestMsg.style.display = 'block';
   }
+
+  scheduleRoomChatPosition();
 }
 
 function addCpuPlayer() {
@@ -807,6 +1043,7 @@ function applyViewportFit() {
     return;
   }
 
+  gameContainer.style.display = 'block';
   const naturalWidth = 820;
   const naturalHeight = 760;
   const maxScaleX = (window.innerWidth - 32) / naturalWidth;
@@ -831,6 +1068,7 @@ socket.on('game-started', (data) => {
   console.log('ゲーム開始受信:', data);
   latestGameState = data;
   myRoomId = data.roomId;
+  setRoomChatRoom(myRoomId);
   document.body.classList.add('game-active');
   previousFieldCards = [];
   document.getElementById('lobby-container').style.display = 'none';
@@ -859,6 +1097,7 @@ socket.on('game-started', (data) => {
   updateUI(data);
   updateHand(currentHand);
   applyViewportFit();
+  scheduleRoomChatPosition();
 });
 
 // ゲーム状態更新
@@ -902,6 +1141,7 @@ socket.on('state-updated', (data) => {
   updateUI(data);
   updateHand(currentHand);
   applyViewportFit();
+  scheduleRoomChatPosition();
 });
 
 // 手札更新
@@ -947,6 +1187,8 @@ function renderTurnCountdown(deadlineAt) {
 function updateUI(data) {
   if (data.gameType === 'chinchiro') {
     document.body.classList.add('chinchiro-mode');
+    document.getElementById('game-status-banner').style.display = 'none';
+    document.getElementById('game-action-message').textContent = '';
     updateChinchiroUI(data);
     return;
   }
@@ -1026,7 +1268,7 @@ function updateUI(data) {
   actionMessage.innerText = formatGameActionMessage(data.actionMessage);
   const hasStatus = statusTags.childElementCount > 0;
   const hasAction = actionMessage.innerText.length > 0;
-  statusBanner.style.display = hasStatus || hasAction ? 'flex' : 'none';
+  statusBanner.style.display = hasStatus ? 'flex' : 'none';
   actionMessage.style.display = hasAction ? 'block' : 'none';
 
   // 場のカード表示
@@ -1050,9 +1292,11 @@ function updateUI(data) {
   const othersEl = document.getElementById('other-players');
   const orderedOthers = data.players.filter(p => p.id !== currentSocketId);
   const seatOrder = orderedOthers.length > 0 ? orderedOthers : [];
+  const seatLayoutPlayerCount = data.players.length;
   const tableStage = document.querySelector('.table-stage');
   const fieldSection = document.querySelector('.field-section');
-  const seatCardHeight = 88;
+  const isMobileTable = window.matchMedia('(max-width: 640px)').matches;
+  const seatCardHeight = isMobileTable ? 62 : 122;
 
   if (tableStage) {
     if (window.matchMedia('(max-width: 640px)').matches) {
@@ -1073,15 +1317,28 @@ function updateUI(data) {
   othersEl.innerHTML = seatOrder.map((p, index) => {
     const isTurn = p.id === data.turnPlayerId;
     const totalCardCount = p.cardCount;
-    const topRowCount = Math.ceil(seatOrder.length / 2);
-    const seatGap = window.matchMedia('(max-width: 640px)').matches ? 5 : 12;
+    const topRowCount = Math.ceil(seatLayoutPlayerCount / 2);
+    const seatGap = isMobileTable ? 5 : 12;
     const seatCardWidth = Math.min(112, (stageWidth - (topRowCount - 1) * seatGap) / Math.max(topRowCount, 1));
-    const spacing = totalCardCount > 12 ? 2.2 : totalCardCount > 6 ? 2.7 : 3.2;
-    const stackWidth = Math.max(62, Math.min(96, 42 + totalCardCount * 2.2));
+    const preferredSpacing = isTurn
+      ? totalCardCount > 12 ? 3.2 : totalCardCount > 6 ? 4 : 4.5
+      : totalCardCount > 12 ? 1.3 : 1.7;
+    const stackMaxWidth = isMobileTable ? Math.max(40, seatCardWidth - 12) : 96;
+    const stackWidth = Math.min(stackMaxWidth, Math.max(62, 42 + totalCardCount * 2.2));
+    const miniCardWidth = isMobileTable ? 14 : 18;
+    const miniCardHeight = isMobileTable ? 18 : 24;
+    const stackHeight = isMobileTable ? 18 : 38;
+    const spacing = Math.min(
+      preferredSpacing,
+      Math.max(0, (stackWidth - miniCardWidth) / Math.max(totalCardCount - 1, 1))
+    );
+    const fanWidth = miniCardWidth + Math.max(0, totalCardCount - 1) * spacing;
+    const fanStart = Math.max(0, (stackWidth - fanWidth) / 2);
     const stackCards = Array.from({ length: totalCardCount }, (_, idx) => {
-      const angle = -24 + (idx * (48 / Math.max(totalCardCount - 1, 1)));
-      const left = 12 + idx * spacing;
-      const top = 0;
+      const fanAngle = isMobileTable ? 24 : 48;
+      const angle = -fanAngle / 2 + (idx * (fanAngle / Math.max(totalCardCount - 1, 1)));
+      const left = fanStart + idx * spacing;
+      const top = Math.round((stackHeight - miniCardHeight) / 2);
       return `
         <span class="mini-card" style="left:${left}px; top:${top}px; z-index:${totalCardCount - idx}; transform: rotate(${angle}deg);"></span>
       `;
@@ -1089,7 +1346,7 @@ function updateUI(data) {
     const countBadge = `<span class="count-stack-total">${totalCardCount}</span>`;
     const winnerText = p.isWinner ? `<span class="winner-text">🎉 ${p.rank}位</span>` : '';
     const seatPos = getOpponentSeatLayout(
-      seatOrder.length,
+      seatLayoutPlayerCount,
       index,
       stageWidth,
       seatCardWidth,
@@ -1544,15 +1801,24 @@ function renderCard(card, isClickable = true, isSelected = false, isSelectable =
   const isRed = card.suit === '♥' || card.suit === '♦';
 
   let classes = ['card'];
+  if (isClickable) classes.push('hand-card');
   if (isJoker) classes.push('joker');
   if (isRed) classes.push('red');
   if (isSelected) classes.push('selected');
   if (isClickable && !isSelectable && !isSelected) classes.push('disabled');
 
   const clickAttr = isClickable ? `onclick="handleCardClick('${card.id}')"` : '';
-  const displayText = isJoker ? 'JOKER' : `${card.suit}${card.num}`;
+  const display = isJoker
+    ? '<span class="card-joker-label">JOKER</span>'
+    : `
+      <span class="card-corner">
+        <span class="card-corner-suit">${escapeHtml(card.suit)}</span>
+        <strong class="card-corner-rank">${escapeHtml(card.num)}</strong>
+      </span>
+      <span class="card-center-suit" aria-hidden="true">${escapeHtml(card.suit)}</span>
+    `;
 
-  return `<div class="${classes.join(' ')}" ${clickAttr}><span>${displayText}</span></div>`;
+  return `<div class="${classes.join(' ')}" ${clickAttr}>${display}</div>`;
 }
 
 // カードクリック処理
@@ -1732,10 +1998,21 @@ function updateHand(hand) {
   const handEl = document.getElementById('hand');
   if (!handEl) return;
 
+  const handSection = handEl.closest('.hand-section');
+  const currentSocketId = socket.id || myId;
+  const canAct = !!latestGameState && (
+    !!pendingExchangeSelection
+    || !!pendingSideSelection
+    || (latestGameState.status === 'playing' && latestGameState.turnPlayerId === currentSocketId)
+  );
+  handSection?.classList.toggle('is-my-turn', canAct);
+  handSection?.classList.toggle('is-waiting', !!latestGameState && !canAct);
+  handEl.classList.toggle('is-multi-row', canAct && hand.length > 13);
+
   if (hand.length === 0) {
     handEl.innerHTML = '<div style="color: #2ecc71; font-weight: bold; font-size: 18px;">あがり！おめでとうございます！</div>';
   } else {
-    handEl.innerHTML = hand.map(c => {
+    const renderedCards = hand.map(c => {
       const isSelected = (pendingExchangeSelection && pendingExchangeSelection.selected.has(c.id))
         || (pendingSideSelection && (
           pendingSideSelection.passSelected.has(c.id) || pendingSideSelection.discardSelected.has(c.id)
@@ -1753,6 +2030,18 @@ function updateHand(hand) {
           : isCardSelectable(c);
 
       return renderCard(c, true, isSelected, selectable);
+    });
+    const rowSizes = renderedCards.length === 27
+      ? [13, 14]
+      : Array.from({ length: Math.ceil(renderedCards.length / 13) }, (_, rowIndex) => (
+        Math.min(13, renderedCards.length - rowIndex * 13)
+      ));
+    let cardOffset = 0;
+    handEl.innerHTML = rowSizes.map(rowSize => {
+      const rowClass = rowSize === 14 ? ' hand-row--14' : '';
+      const rowCards = renderedCards.slice(cardOffset, cardOffset + rowSize);
+      cardOffset += rowSize;
+      return `<div class="hand-row${rowClass}">${rowCards.join('')}</div>`;
     }).join('');
   }
   updatePlayButton();
@@ -1906,10 +2195,6 @@ function renderOverallRanking(listElement, roundsElement, data) {
     name.className = 'overall-player-name';
     name.textContent = player.name;
 
-    const role = document.createElement('span');
-    role.className = 'overall-player-role';
-    role.textContent = player.role || (player.isCpu ? 'CPU' : '');
-
     const points = document.createElement('strong');
     points.className = 'overall-points';
     points.append(document.createTextNode(String(player.totalPoints || 0)));
@@ -1917,9 +2202,7 @@ function renderOverallRanking(listElement, roundsElement, data) {
     unit.textContent = 'pt';
     points.appendChild(unit);
 
-    row.append(rank, name);
-    if (!isChinchiro) row.appendChild(role);
-    row.appendChild(points);
+    row.append(rank, name, points);
     listElement.appendChild(row);
   });
 }
@@ -1998,9 +2281,10 @@ function showGameFinished(data) {
     const roundPointsLabel = roundPoints > 0 ? `+${roundPoints}` : String(roundPoints);
     const isMe = p.id === currentSocketId;
     return `
-      <div class="ranking-item rank-${p.rank || idx + 1}${isMe ? ' is-me' : ''}">
+      <div class="ranking-item rank-${p.rank || idx + 1}${isMe ? ' is-me' : ''}${data.gameType === 'chinchiro' ? ' is-chinchiro' : ''}">
         <span class="ranking-place">${rankTitle}</span>
-        <span class="ranking-player"><strong>${escapeHtml(p.name)}</strong>${getRoleBadge(p.role)}</span>
+        <span class="ranking-player"><strong>${escapeHtml(p.name)}</strong></span>
+        ${data.gameType === 'chinchiro' ? '' : `<span class="ranking-role">${getRoleBadge(p.role)}</span>`}
         <span class="ranking-result-meta"><strong>${roundPointsLabel}</strong><small>pt</small></span>
       </div>
     `;
